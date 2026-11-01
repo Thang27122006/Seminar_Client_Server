@@ -20,7 +20,7 @@ from common.protocol import (
 class ChatClient:
 
     def __init__(self, host=HOST, port=PORT):
-        self.host = host
+        self.host = '127.0.0.1' if host == '0.0.0.0' else host
         self.port = port
         self.client_socket = None
         self.username = None

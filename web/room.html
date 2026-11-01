@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Google Meet - Cuộc họp video bảo mật</title>
+  <meta name="description" content="Nền tảng họp trực tuyến Google Meet đa giao thức cho Seminar Lập trình mạng.">
+
+  <!-- Favicon Google Meet 4-color Camera -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'><path fill='%23EA4335' d='M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z'/><path fill='%234285F4' d='M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z'/><path fill='%23FBBC05' d='M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z'/><path fill='%2334A853' d='M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z'/></svg>">
+
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/css/room.css">
+</head>
+<body class="meet-in-call-body">
+
+  <!-- =================================================================== -->
+  <!-- 1. GREEN ROOM / SẢNH XEM TRƯỚC (MIC, CAM & SẴN SÀNG THAM GIA)     -->
+  <!-- =================================================================== -->
+  <div class="green-room-container" id="greenRoomContainer">
+    <!-- Top Bar của Sảnh Chờ -->
+    <header style="position: absolute; top: 0; left: 0; right: 0; height: 64px; padding: 0 28px; display: flex; align-items: center; justify-content: space-between; z-index: 10;">
+      <a href="/" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: inherit;">
+        <svg width="34" height="34" viewBox="0 0 48 48" fill="none">
+          <path d="M10 12C10 9.79086 11.7909 8 14 8H26C28.2091 8 30 9.79086 30 12V36C30 38.2091 28.2091 40 26 40H14C11.7909 40 10 38.2091 10 36V12Z" fill="#00832D"/>
+          <path d="M30 18L38 12V36L30 30V18Z" fill="#0066DA"/>
+          <path d="M10 12C10 9.79086 11.7909 8 14 8H26V18H10V12Z" fill="#2684FC"/>
+          <path d="M10 30H30V36C30 38.2091 28.2091 40 26 40H14C11.7909 40 10 38.2091 10 36V30Z" fill="#00AC47"/>
+          <path d="M30 18H38V30H30V18Z" fill="#FFBA00"/>
+        </svg>
+        <span style="font-size: 1.25rem; font-weight: 500; color: #fff; letter-spacing: -0.3px;">NetSphere <span style="color: #8ab4f8; font-weight: 400;">Meet</span></span>
+      </a>
+
+      <div style="display: flex; align-items: center; gap: 16px;">
+        <div id="grLiveClock" style="font-size: 0.95rem; color: #bdc1c6; font-weight: 500;">--:--</div>
+        <div id="grAccountChip" style="display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.08); padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; color: #e8eaed;">
+          <span class="gr-chip-avatar" id="grChipAvatar" style="width: 24px; height: 24px; border-radius: 50%; background: #1a73e8; display: inline-flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 600;">G</span>
+          <span id="grChipName">Khách</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Khối Trung Tâm: Xem Trước Video + Sẵn Sàng Tham Gia -->
+    <div class="green-room-grid">
+      <!-- Cột Trái: Khung Webcam Preview -->
+      <div class="gr-preview-box" id="grPreviewBox">
+        <video id="grVideoStream" class="gr-video-stream" autoplay playsinline muted></video>
+
+        <div class="gr-avatar-placeholder" id="grAvatarPlaceholder" style="display: none;">
+          <div class="gr-avatar-circle" id="grAvatarCircle">M</div>
+          <div class="gr-cam-status-text">Máy ảnh đang tắt</div>
+        </div>
+
+        <!-- Cụm Nút Tròn Bật/Tắt Mic & Camera trên Sảnh Chờ -->
+        <div class="gr-controls-overlay">
+          <button class="gr-btn-circle" id="grBtnMic" title="Bật/Tắt Micrô (Ctrl+D)">
+            <!-- Mic Bật (Hình 2) -->
+            <svg id="grIconMicOn" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path>
+              <path d="M19 10v1a7 7 0 0 1-14 0v-1"></path>
+              <line x1="12" y1="18" x2="12" y2="22"></line>
+            </svg>
+            <!-- Mic Tắt (Hình 2 khi tắt) -->
+            <svg id="grIconMicOff" class="hidden" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="2" y1="2" x2="22" y2="22"></line>
+              <path d="M9 9v2a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6"></path>
+              <path d="M17 16.95A7 7 0 0 1 5 11v-1m14 0v1a7 7 0 0 1-.11 1.23"></path>
+              <line x1="12" y1="18" x2="12" y2="22"></line>
+            </svg>
+          </button>
+
+          <button class="gr-btn-circle" id="grBtnCam" title="Bật/Tắt Máy Ảnh (Ctrl+E)">
+            <!-- Camera Bật (Hình 2) -->
+            <svg id="grIconCamOn" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="6" width="13" height="12" rx="2"></rect>
+              <polygon points="15 10 21 6.5 21 17.5 15 14" fill="currentColor" stroke="none"></polygon>
+            </svg>
+            <!-- Camera Tắt (Hình 2 khi tắt) -->
+            <svg id="grIconCamOff" class="hidden" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="2" y1="2" x2="22" y2="22"></line>
+              <path d="M15 10l6-3.5v11l-3-1.8"></path>
+              <path d="M9 6h4a2 2 0 0 1 2 2v2"></path>
+              <path d="M2 8.5V16a2 2 0 0 0 2 2h10"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Cột Phải: Sẵn Sàng Tham Gia -->
+      <div class="gr-details-box">
+        <h2 class="gr-heading">Sẵn sàng tham gia?</h2>
+        <div class="gr-people-in-call" id="grRoomSummary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <circle cx="9" cy="7" r="4"></circle>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+          </svg>
+          <span id="grRoomSummaryText">Đang kiểm tra thành viên...</span>
+        </div>
+
+        <div id="grUserSection">
+          <label style="display: block; font-size: 0.85rem; color: #9aa0a6; margin-bottom: 6px;">Tên của bạn khi tham gia:</label>
+          <input type="text" id="grInputUsername" class="gr-input-name" placeholder="Nhập họ và tên hoặc biệt danh..." maxlength="30">
+        </div>
+
+        <div class="gr-actions-row">
+          <button id="btnGrJoinNow" class="btn-gr-join-now">Tham gia ngay</button>
+          <button id="btnGrPresent" class="btn-gr-present" title="Tham gia và chia sẻ màn hình trực tiếp">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+              <line x1="8" y1="21" x2="16" y2="21"></line>
+              <line x1="12" y1="17" x2="12" y2="21"></line>
+            </svg>
+            <span>Trình bày</span>
+          </button>
+        </div>
+
+        <div style="font-size: 0.78rem; color: #80868b; line-height: 1.4; margin-top: 8px;">
+          🔒 Được mã hóa và đồng bộ đa giao thức giữa Web và Máy tính (TCP Port 9000).
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =================================================================== -->
+  <!-- 2. GIAO DIỆN PHÒNG HỌP CHÍNH (IN-CALL MAIN STAGE)                   -->
+  <!-- =================================================================== -->
+  <main class="meet-main-stage" id="meetMainStage">
+    <!-- Khung Trình Bày Màn Hình (Khi Có Người Share Screen) -->
+    <div class="meet-presentation-stage" id="meetPresentationStage">
+      <video id="screenShareVideo" class="screen-video-elem" autoplay playsinline></video>
+      <div class="screen-share-banner" id="screenShareBanner">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+          <line x1="8" y1="21" x2="16" y2="21"></line>
+          <line x1="12" y1="17" x2="12" y2="21"></line>
+        </svg>
+        <span id="screenSharePresenterText">Bạn đang trình bày màn hình cho mọi người</span>
+        <button id="btnStopPresentation" style="background: rgba(255,255,255,0.2); border: none; color: #fff; padding: 4px 12px; border-radius: 12px; cursor: pointer; font-size: 0.8rem; font-weight: 600;">Dừng chia sẻ</button>
+      </div>
+    </div>
+
+    <!-- Khung Lưới Ô Video Của Người Tham Gia (Dynamic Tiles Grid) -->
+    <div class="meet-grid-container" id="meetGridContainer" data-tiles="1">
+      <!-- Các Video Tile sẽ được Javascript render tự động -->
+    </div>
+
+    <!-- Bong bóng Emoji bay lên khi có reaction -->
+    <div class="emoji-fly-container" id="emojiFlyContainer"></div>
+
+    <!-- Hộp thoại Phụ Đề Trực Tiếp (Live Captions) -->
+    <div class="meet-captions-container hidden" id="meetCaptionsBox">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="7" y1="15" x2="11" y2="15"></line><line x1="13" y1="15" x2="17" y2="15"></line><line x1="7" y1="9" x2="17" y2="9"></line></svg>
+      <span id="captionText">Phụ đề cuộc gọi đang bật. Lời nói và tin nhắn sẽ hiển thị tại đây...</span>
+    </div>
+
+    <!-- Popup Menu Thả Biểu Cảm Emoji -->
+    <div class="reaction-popup hidden" id="reactionPopup">
+      <button class="btn-emoji-react" data-emoji="💖" title="Yêu thích">💖</button>
+      <button class="btn-emoji-react" data-emoji="👍" title="Tuyệt vời">👍</button>
+      <button class="btn-emoji-react" data-emoji="🎉" title="Chúc mừng">🎉</button>
+      <button class="btn-emoji-react" data-emoji="👏" title="Vỗ tay">👏</button>
+      <button class="btn-emoji-react" data-emoji="😂" title="Haha">😂</button>
+      <button class="btn-emoji-react" data-emoji="😮" title="Ngạc nhiên">😮</button>
+    </div>
+
+    <!-- ================================================================= -->
+    <!-- 3. NGĂN KÉO CỘT PHẢI (GOOGLE MEET RIGHT DRAWER)                   -->
+    <!-- ================================================================= -->
+    <aside class="meet-side-drawer hidden" id="meetSideDrawer">
+      <!-- Tiêu Đề Ngăn Kéo & Nút Đóng -->
+      <div class="drawer-header">
+        <h3 id="drawerHeaderTitle">Mọi người</h3>
+        <button id="btnCloseDrawer" style="background: transparent; border: none; color: #bdc1c6; cursor: pointer; padding: 6px; border-radius: 50%; display: flex; align-items: center; justify-content: center;" title="Đóng">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+
+      <!-- Hàng Tabs Chuyển Đổi Nhanh -->
+      <div class="drawer-tabs-row">
+        <button class="drawer-tab-btn active" id="tabBtnDrawerPeople" data-target="people">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+          <span>Mọi người</span>
+        </button>
+        <button class="drawer-tab-btn" id="tabBtnDrawerChat" data-target="chat">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+          <span>Trò chuyện</span>
+        </button>
+        <button class="drawer-tab-btn" id="tabBtnDrawerHost" data-target="host">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+          <span>Kiểm soát Host</span>
+        </button>
+      </div>
+
+      <!-- Tab 1: Danh Sách Mọi Người -->
+      <div class="drawer-body-panel" id="panelDrawerPeople">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+          <span style="font-size: 0.85rem; color: #bdc1c6;" id="peopleCountLabel">Trong cuộc gọi (0)</span>
+          <button id="btnHostMuteAll" style="background: rgba(234,67,53,0.15); border: 1px solid rgba(234,67,53,0.3); color: #ea4335; padding: 4px 10px; border-radius: 14px; font-size: 0.78rem; font-weight: 500; cursor: pointer;">Tắt tiếng tất cả</button>
+        </div>
+        <div id="drawerPeopleList" style="display: flex; flex-direction: column; gap: 4px;">
+          <!-- Danh sách thành viên sẽ được render tại đây -->
+        </div>
+      </div>
+
+      <!-- Tab 2: Tin Nhắn Trực Tuyến Trong Cuộc Gọi -->
+      <div class="drawer-body-panel hidden" id="panelDrawerChat" style="padding-bottom: 0;">
+        <div style="background: rgba(255,255,255,0.05); padding: 10px 14px; border-radius: 8px; font-size: 0.78rem; color: #9aa0a6; line-height: 1.4; margin-bottom: 12px;">
+          Tin nhắn chỉ hiển thị với những người đang tham gia cuộc gọi và sẽ bị xóa khi cuộc gọi kết thúc.
+        </div>
+        <div class="in-call-chat-stream" id="meetChatStream">
+          <!-- Tin nhắn chat sẽ được thêm vào đây -->
+        </div>
+        <form class="chat-input-row" id="formMeetChat" style="margin-top: auto; padding: 12px 0;">
+          <input type="text" class="input-meet-chat" id="inputMeetChat" placeholder="Gửi tin nhắn cho mọi người..." autocomplete="off">
+          <button type="submit" class="btn-send-meet-chat" id="btnSendMeetChat" title="Gửi tin nhắn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+          </button>
+        </form>
+      </div>
+
+      <!-- Tab 3: Biện Pháp Kiểm Soát Của Người Tổ Chức (Host Controls) -->
+      <div class="drawer-body-panel hidden" id="panelDrawerHost">
+        <div style="font-size: 0.85rem; color: #9aa0a6; margin-bottom: 16px;">
+          Sử dụng các tùy chọn cài đặt này của người tổ chức để quản lý cuộc họp an toàn.
+        </div>
+
+        <div class="host-toggle-item">
+          <div class="host-toggle-desc">
+            <div class="host-toggle-title">Chia sẻ màn hình</div>
+            <div class="host-toggle-sub">Cho phép mọi người chia sẻ màn hình của họ</div>
+          </div>
+          <label class="switch-gm">
+            <input type="checkbox" id="toggleHostShareScreen" checked>
+            <span class="slider-gm"></span>
+          </label>
+        </div>
+
+        <div class="host-toggle-item">
+          <div class="host-toggle-desc">
+            <div class="host-toggle-title">Gửi tin nhắn trò chuyện</div>
+            <div class="host-toggle-sub">Cho phép mọi người gửi tin nhắn trong cuộc họp</div>
+          </div>
+          <label class="switch-gm">
+            <input type="checkbox" id="toggleHostChat" checked>
+            <span class="slider-gm"></span>
+          </label>
+        </div>
+
+        <div class="host-toggle-item">
+          <div class="host-toggle-desc">
+            <div class="host-toggle-title">Bật micrô</div>
+            <div class="host-toggle-sub">Cho phép mọi người bật micrô của họ</div>
+          </div>
+          <label class="switch-gm">
+            <input type="checkbox" id="toggleHostMic" checked>
+            <span class="slider-gm"></span>
+          </label>
+        </div>
+
+        <div class="host-toggle-item">
+          <div class="host-toggle-desc">
+            <div class="host-toggle-title">Bật máy ảnh</div>
+            <div class="host-toggle-sub">Cho phép mọi người bật video webcam của họ</div>
+          </div>
+          <label class="switch-gm">
+            <input type="checkbox" id="toggleHostCam" checked>
+            <span class="slider-gm"></span>
+          </label>
+        </div>
+
+        <div style="margin-top: 24px; text-align: center;">
+          <a href="/admin" target="_blank" style="color: #8ab4f8; font-size: 0.85rem; text-decoration: none; font-weight: 500;">Mở Bảng Điều Khiển Quản Trị Chi Tiết ↗</a>
+        </div>
+      </div>
+
+      <!-- Tab 4: Thông Tin Chi Tiết Cuộc Họp (Info) -->
+      <div class="drawer-body-panel hidden" id="panelDrawerInfo">
+        <h4 style="margin: 0 0 10px 0; font-size: 1rem; color: #fff;">Thông tin tham gia</h4>
+        <div style="font-size: 0.85rem; color: #bdc1c6; line-height: 1.5; margin-bottom: 16px;">
+          Chia sẻ thông tin này với những người bạn muốn mời tham gia cuộc họp:
+        </div>
+        <div style="background: rgba(255,255,255,0.06); padding: 12px; border-radius: 8px; font-family: var(--meet-mono); font-size: 0.9rem; color: #8ab4f8; margin-bottom: 16px; word-break: break-all;" id="drawerMeetingUrl">
+          https://meet.google.com/abc-defg-hij
+        </div>
+        <button id="btnDrawerCopyLink" class="btn-gr-join-now" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; height: 42px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+          <span>Sao chép thông tin tham gia</span>
+        </button>
+      </div>
+    </aside>
+  </main>
+
+  <!-- =================================================================== -->
+  <!-- 4. THANH ĐIỀU KHIỂN ĐÁY CHUẨN GOOGLE MEET (BOTTOM FLOATING PILL BAR)-->
+  <!-- =================================================================== -->
+  <footer class="meet-bottom-bar" id="meetBottomBar">
+    <!-- Cụm Trái: Giờ | Mã Cuộc Họp -->
+    <div class="bottom-left-info">
+      <span id="meetBottomTime">--:--</span>
+      <span style="color: rgba(255,255,255,0.3);">|</span>
+      <span class="meet-code-text" id="meetBottomCode">abc-defg-hij</span>
+      <button id="btnBottomCopyCode" title="Sao chép mã phòng" style="background: transparent; border: none; color: #bdc1c6; cursor: pointer; padding: 4px; border-radius: 50%; display: inline-flex; align-items: center;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      </button>
+    </div>
+
+    <!-- Cụm Giữa: Các Nút Hành Động Tròn & Nút Đỏ Rời Cuộc Gọi -->
+    <div class="bottom-center-controls">
+      <!-- 1. Bật/Tắt Micrô -->
+      <!-- 1. Bật/Tắt Micrô (Hình 2 Material You) -->
+      <button class="btn-meet-ctrl" id="btnMeetMic" title="Bật/Tắt Micrô (Ctrl+D)">
+        <svg id="iconCallMicOn" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path>
+          <path d="M19 10v1a7 7 0 0 1-14 0v-1"></path>
+          <line x1="12" y1="18" x2="12" y2="22"></line>
+        </svg>
+        <svg id="iconCallMicOff" class="hidden" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="2" y1="2" x2="22" y2="22"></line>
+          <path d="M9 9v2a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6"></path>
+          <path d="M17 16.95A7 7 0 0 1 5 11v-1m14 0v1a7 7 0 0 1-.11 1.23"></path>
+          <line x1="12" y1="18" x2="12" y2="22"></line>
+        </svg>
+      </button>
+
+      <!-- 2. Bật/Tắt Máy Ảnh (Hình 2 Material You) -->
+      <button class="btn-meet-ctrl" id="btnMeetCam" title="Bật/Tắt Máy Ảnh (Ctrl+E)">
+        <svg id="iconCallCamOn" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="6" width="13" height="12" rx="2"></rect>
+          <polygon points="15 10 21 6.5 21 17.5 15 14" fill="currentColor" stroke="none"></polygon>
+        </svg>
+        <svg id="iconCallCamOff" class="hidden" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="2" y1="2" x2="22" y2="22"></line>
+          <rect x="2" y="6" width="13" height="12" rx="2"></rect>
+          <polygon points="15 10 21 6.5 21 17.5 15 14" fill="currentColor" stroke="none"></polygon>
+        </svg>
+      </button>
+
+      <!-- 3. Phụ Đề Trực Tiếp (CC) -->
+      <button class="btn-meet-ctrl" id="btnMeetCC" title="Bật phụ đề (c)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="7" y1="15" x2="11" y2="15"></line><line x1="13" y1="15" x2="17" y2="15"></line><line x1="7" y1="9" x2="17" y2="9"></line></svg>
+      </button>
+
+      <!-- 4. Thả Biểu Cảm Cảm Xúc (Reactions) -->
+      <button class="btn-meet-ctrl" id="btnMeetReact" title="Gửi biểu tượng cảm xúc">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
+      </button>
+
+      <!-- 5. Chia Sẻ Màn Hình (Share Screen) -->
+      <button class="btn-meet-ctrl" id="btnMeetShareScreen" title="Trình bày ngay">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+      </button>
+
+      <!-- 6. Giơ Tay Phát Biểu (Raise Hand) -->
+      <button class="btn-meet-ctrl" id="btnMeetHand" title="Giơ tay phát biểu (Ctrl+H)">
+        <span style="font-size: 1.25rem; line-height: 1;">✋</span>
+      </button>
+
+      <!-- 7. Tùy Chọn Khác (More Options) -->
+      <button class="btn-meet-ctrl" id="btnMeetMore" title="Tùy chọn khác">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg>
+      </button>
+
+      <!-- 8. Nút Đỏ Rời Cuộc Họp -->
+      <button class="btn-meet-end-call" id="btnMeetEndCall" title="Rời khỏi cuộc gọi">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.996.996 0 0 1 0-1.41C3.28 8.78 7.39 7 12 7c4.61 0 8.72 1.78 11.71 4.67.39.39.39 1.02 0 1.41l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.68-1.36-2.66-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Cụm Phải: Các Nút Mở Drawer (Info, People, Chat, Host) -->
+    <div class="bottom-right-toggles">
+      <!-- Nút Chi Tiết Cuộc Họp (Info) -->
+      <button class="btn-meet-tool" id="btnToggleInfo" title="Chi tiết cuộc họp">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+      </button>
+
+      <!-- Nút Mọi Người (People) -->
+      <button class="btn-meet-tool" id="btnTogglePeople" title="Mọi người">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+        <span class="badge-tool-counter" id="badgePeopleCount">1</span>
+      </button>
+
+      <!-- Nút Trò Chuyện (Chat) -->
+      <button class="btn-meet-tool" id="btnToggleChat" title="Trò chuyện với mọi người">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+        <span class="badge-tool-counter hidden" id="badgeChatCount">0</span>
+      </button>
+
+      <!-- Nút Biện Pháp Kiểm Soát Của Host -->
+      <button class="btn-meet-tool" id="btnToggleHostControls" title="Bộ điều khiển của người tổ chức">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+      </button>
+    </div>
+  </footer>
+
+  <!-- Toast Thông Báo Chuẩn Google Meet -->
+  <div class="meet-toast hidden" id="meetToast">
+    <span id="meetToastMessage">Đã sao chép đường liên kết tham gia cuộc họp.</span>
+  </div>
+
+  <!-- Scripts -->
+  <script src="/js/auth.js"></script>
+  <script src="/js/sound_fx.js"></script>
+  <script src="/js/meet_room.js"></script>
+</body>
+</html>

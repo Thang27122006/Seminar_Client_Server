@@ -1,6 +1,5 @@
 import sys
 
-# Thiết lập bảng mã UTF-8 cho console Windows
 if sys.platform == 'win32' and hasattr(sys.stdout, 'reconfigure'):
     try:
         sys.stdout.reconfigure(encoding='utf-8')

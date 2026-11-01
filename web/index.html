@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NetSphere - Nền Tảng Chat Client-Server & Giám Sát Mạng Đa Giao Thức</title>
+  <meta name="description" content="Đồ án Seminar Lập trình mạng: Ứng dụng Chat Client-Server thời gian thực hỗ trợ đồng thời WebSocket và TCP Sockets cùng bảng điều khiển giám sát mạng chuyên sâu.">
+  <meta name="author" content="Seminar Lập Trình Mạng">
+
+  <!-- Google Fonts: Inter cho Giao diện & JetBrains Mono cho Gói tin/Log -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <!-- =================================================================== -->
+  <!-- THANH ĐIỀU HƯỚNG CHÍNH (TOP NAVIGATION BAR) -->
+  <!-- =================================================================== -->
+  <header class="app-header" id="appHeader">
+    <div class="header-left">
+      <div class="brand-logo" id="brandLogo">
+        <div class="logo-icon-box">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+            <line x1="6" y1="6" x2="6.01" y2="6"></line>
+            <line x1="6" y1="18" x2="6.01" y2="18"></line>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <div class="brand-name">NetSphere <span class="badge-mini">TCP &bull; WS</span></div>
+          <div class="brand-sub">Seminar Lập Trình Mạng &bull; Client-Server Hub</div>
+        </div>
+      </div>
+
+      <!-- Chuyển Đổi Tab Chính -->
+      <nav class="nav-tabs" id="mainNavTabs" aria-label="Main Navigation">
+        <button class="nav-tab-btn active" id="tabBtnChat" data-tab="chat">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+          </svg>
+          <span>Phòng Chat</span>
+          <span class="unread-pill hidden" id="chatUnreadPill">0</span>
+        </button>
+
+        <button class="nav-tab-btn" id="tabBtnArchitecture" data-tab="architecture">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="18" cy="5" r="3"></circle>
+            <circle cx="6" cy="12" r="3"></circle>
+            <circle cx="18" cy="19" r="3"></circle>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+          </svg>
+          <span>Kiến Trúc &amp; Giao Thức</span>
+        </button>
+
+        <!-- Nút Mở Trang Quản Trị Host Riêng Biệt (Google Meet / Zoom Style) -->
+        <a href="/admin" target="_blank" class="nav-tab-btn" style="background: rgba(245, 158, 11, 0.15); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.35); text-decoration: none;" title="Mở trang Quản trị Host riêng biệt (Google Meet / Zoom Style)">
+          <span>👑 Host Studio (Meet/Zoom) ↗</span>
+        </a>
+      </nav>
+    </div>
+
+    <!-- Nút Tiện Ích Bên Phải -->
+    <div class="header-right">
+      <!-- Latency & Trạng thái Server -->
+      <div class="status-indicator-box" id="networkLatencyBox" title="Độ trễ phản hồi máy chủ">
+        <span class="pulse-indicator online" id="statusPulseDot"></span>
+        <span class="status-label" id="connectionStatusLabel">Sẵn sàng</span>
+        <span class="latency-pill" id="pingValue">-- ms</span>
+      </div>
+
+      <!-- Nút Mở Live Protocol Inspector -->
+      <button class="action-icon-btn highlight" id="btnToggleInspector" title="Mở Trình Giám Sát Gói Tin Mạng">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="4 17 10 11 4 5"></polyline>
+          <line x1="12" y1="19" x2="20" y2="19"></line>
+        </svg>
+        <span class="btn-label-text">Gói Tin</span>
+        <span class="packet-counter" id="headerPacketCount">0</span>
+      </button>
+
+      <!-- Âm Thanh FX -->
+      <button class="action-icon-btn" id="btnToggleSound" title="Bật/Tắt Âm Thanh Hiệu Ứng">
+        <svg id="iconSoundOn" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+          <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+        </svg>
+        <svg id="iconSoundOff" class="hidden" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+          <line x1="23" y1="9" x2="17" y2="15"></line>
+          <line x1="17" y1="9" x2="23" y2="15"></line>
+        </svg>
+      </button>
+
+      <!-- Đổi Theme Dark/Light -->
+      <button class="action-icon-btn" id="btnToggleTheme" title="Chuyển Chế Độ Sáng/Tối">
+        <svg id="iconMoon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+        <svg id="iconSun" class="hidden" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="5"></circle>
+          <line x1="12" y1="1" x2="12" y2="3"></line>
+          <line x1="12" y1="21" x2="12" y2="23"></line>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+          <line x1="1" y1="12" x2="3" y2="12"></line>
+          <line x1="21" y1="12" x2="23" y2="12"></line>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+        </svg>
+      </button>
+
+      <!-- Thông tin User trên Header khi đã kết nối -->
+      <div class="user-badge-header hidden" id="headerUserBadge">
+        <div class="user-avatar-mini" id="headerAvatar">U</div>
+        <div class="user-info-mini">
+          <span class="user-name-text" id="headerUserName">Username</span>
+          <span class="user-id-text" id="headerUserId">ID #--</span>
+        </div>
+        <button class="btn-disconnect-mini" id="btnHeaderDisconnect" title="Rời phòng chat">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21" y1="12" x2="9" y2="12"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- =================================================================== -->
+  <!-- CONTAINER CHÍNH CHỨA CÁC MÀN HÌNH (MAIN VIEW CONTAINER) -->
+  <!-- =================================================================== -->
+  <main class="main-viewport" id="mainViewport">
+
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <!-- TAB 1: GIAO DIỆN PHÒNG CHAT (CHAT CLIENT VIEW) -->
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <section class="view-panel active" id="viewChat">
+      
+      <!-- Modal / Màn hình Đăng Nhập & Tham Gia Chat -->
+      <div class="login-overlay" id="chatLoginOverlay">
+        <div class="login-card-glass">
+          <div class="login-badge">SEMINAR LẬP TRÌNH SOCKET TCP &bull; WEBSOCKET</div>
+          <h1 class="login-title">Tham Gia Phòng Chat</h1>
+          <p class="login-desc">Kết nối máy khách tới Server trung tâm và tương tác cùng các Client Web &amp; Desktop.</p>
+
+          <form id="formJoinChat" class="login-form" onsubmit="return false;">
+            <!-- Cấu hình Địa chỉ Server -->
+            <div class="form-group">
+              <label for="inputServerUrl" class="form-label">
+                <span>Địa chỉ máy chủ (WebSocket Endpoint):</span>
+                <span class="form-hint" id="serverDetectHint">Tự động nhận diện</span>
+              </label>
+              <div class="input-with-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                  <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                  <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                  <line x1="6" y1="18" x2="6.01" y2="18"></line>
+                </svg>
+                <input type="text" id="inputServerUrl" class="form-input" placeholder="ws://localhost:8080/ws" required autocomplete="off">
+              </div>
+            </div>
+
+            <!-- Tên Người Dùng (Nickname) -->
+            <div class="form-group">
+              <label for="inputUsername" class="form-label">
+                <span>Tên của bạn (Username):</span>
+                <button type="button" class="btn-text-action" id="btnRandomName">🎲 Tên ngẫu nhiên</button>
+              </label>
+              <div class="input-with-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+                <input type="text" id="inputUsername" class="form-input" placeholder="Nhập nickname của bạn..." maxlength="25" required autofocus>
+              </div>
+            </div>
+
+            <!-- Chọn Avatar & Màu Nhận Diện -->
+            <div class="form-group">
+              <label class="form-label">Chọn biểu tượng đại diện (Avatar):</label>
+              <div class="avatar-picker-grid" id="avatarPickerGrid">
+                <!-- Sẽ được sinh tự động bởi JavaScript -->
+              </div>
+            </div>
+
+            <!-- Thông Báo Trạng Thái Lỗi / Đang Kết Nối -->
+            <div class="login-feedback hidden" id="loginFeedback"></div>
+
+            <button type="submit" class="btn-primary-gradient full-width" id="btnJoinSubmit">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
+                <polyline points="10 17 15 12 10 7"></polyline>
+                <line x1="15" y1="12" x2="3" y2="12"></line>
+              </svg>
+              <span>Vào Phòng Trò Chuyện</span>
+            </button>
+          </form>
+
+          <div class="login-footer-info">
+            <span>💡 <strong>Mẹo:</strong> Mở nhiều tab ẩn danh hoặc thiết bị khác trong cùng Wi-Fi để thử nghiệm tính năng Multi-Client!</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Không Gian Phòng Chat Sau Khi Đã Tham Gia -->
+      <div class="chat-workspace-grid" id="chatWorkspace">
+        
+        <!-- Cột Bên Trái: Danh Sách Cuộc Trò Chuyện & Thành Viên Online -->
+        <aside class="chat-sidebar" id="chatSidebar">
+          <div class="sidebar-section-header">
+            <span class="section-title">KÊNH &amp; HỘI THOẠI</span>
+          </div>
+
+          <!-- Kênh Phòng Chung & Kênh Riêng -->
+          <div class="channel-list" id="channelList">
+            <div class="channel-item active" id="channelPublic" data-target="ALL">
+              <div class="channel-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="9" cy="7" r="4"></circle>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+              </div>
+              <div class="channel-info">
+                <div class="channel-name">Phòng Chung (Public)</div>
+                <div class="channel-desc" id="publicChannelDesc">Toàn bộ thành viên</div>
+              </div>
+              <span class="channel-badge" id="onlineTotalBadge">0</span>
+            </div>
+          </div>
+
+          <!-- Danh sách hội thoại riêng đang có -->
+          <div class="dm-conversations-box hidden" id="dmConversationsBox">
+            <div class="sidebar-section-header">
+              <span class="section-title">TIN NHẮN RIÊNG (WHISPER)</span>
+            </div>
+            <div class="dm-list" id="dmList"></div>
+          </div>
+
+          <!-- Thanh Tìm Kiếm Thành Viên -->
+          <div class="sidebar-section-header space-top">
+            <span class="section-title">THÀNH VIÊN TRỰC TUYẾN (<span id="userCountSpan">0</span>)</span>
+          </div>
+
+          <div class="user-search-box">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" id="inputSearchUser" class="search-input" placeholder="Tìm thành viên...">
+          </div>
+
+          <!-- Danh Sách Thành Viên Online -->
+          <div class="online-users-container" id="onlineUsersContainer">
+            <!-- Render động bằng JavaScript -->
+          </div>
+
+          <!-- Chú Thích Dưới Sidebar -->
+          <div class="sidebar-footer-hint">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="16" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+            <span>Nhấn đúp vào người dùng để Chat Riêng (Whisper/DM)</span>
+          </div>
+        </aside>
+
+        <!-- Cột Trung Tâm: Khung Trò Chuyện & Nhập Tin Nhắn -->
+        <section class="chat-main-area">
+          
+          <!-- Thanh Tiêu Đề Cuộc Trò Chuyện Đang Chọn -->
+          <div class="chat-conversation-header" id="chatActiveHeader">
+            <div class="active-convo-info">
+              <div class="active-convo-avatar" id="activeConvoAvatar">🌐</div>
+              <div class="active-convo-meta">
+                <div class="active-convo-title" id="activeConvoTitle">Phòng Chung (Public Lounge)</div>
+                <div class="active-convo-sub" id="activeConvoSub">Tin nhắn phát tới tất cả các Client Web &amp; Desktop</div>
+              </div>
+            </div>
+
+            <!-- Các Nút Hành Động Trên Header Chat -->
+            <div class="active-convo-actions">
+              <button class="btn-header-action" id="btnClearMessages" title="Xóa lịch sử chat hiện tại">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+                <span>Xóa Màn Hình</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Vùng Cuộn Tin Nhắn (Message Stream) -->
+          <div class="chat-messages-scroll" id="chatMessagesScroll">
+            <!-- Tin Nhắn Chào Mừng & Hướng Dẫn Ban Đầu -->
+            <div class="chat-welcome-banner" id="chatWelcomeBanner">
+              <div class="welcome-icon">🎓</div>
+              <h2 class="welcome-title">Chào Mừng Bạn Đến Với Seminar Lập Trình Mạng</h2>
+              <p class="welcome-text">Hệ thống Client-Server phân tán hỗ trợ đa giao thức kết nối. Tin nhắn của bạn sẽ được gửi qua <strong>WebSocket JSON Frames</strong> hoặc chuyển tiếp tới <strong>TCP Sockets</strong> thời gian thực.</p>
+              <div class="quick-commands-list">
+                <span class="cmd-chip"><code>/w &lt;tên&gt; &lt;nội dung&gt;</code>: Chat riêng</span>
+                <span class="cmd-chip"><code>/clear</code>: Xóa màn hình</span>
+                <span class="cmd-chip"><code>/help</code>: Hướng dẫn</span>
+              </div>
+            </div>
+
+            <!-- Nơi append các message items -->
+            <div class="messages-list-wrapper" id="messagesListWrapper"></div>
+
+            <!-- Chỉ Báo "Đang Soạn Tin..." -->
+            <div class="typing-indicator-bar hidden" id="typingIndicatorBar">
+              <div class="typing-dots">
+                <span></span><span></span><span></span>
+              </div>
+              <span class="typing-text" id="typingText">Ai đó đang nhập...</span>
+            </div>
+          </div>
+
+          <!-- Vùng Khung Nhập Tin Nhắn & Công Cụ -->
+          <footer class="chat-composer-container">
+            
+            <!-- Thanh Báo Đối Tượng Nhận Tin Nhắn Hiện Tại -->
+            <div class="target-recipient-bar" id="targetRecipientBar">
+              <div class="recipient-tag" id="recipientTag">
+                <span class="tag-icon">📢</span>
+                <span class="tag-label">Gửi tới:</span>
+                <strong class="tag-name" id="recipientNameText">Tất cả mọi người (Phòng Chung)</strong>
+              </div>
+              <button class="btn-clear-target hidden" id="btnClearTarget" title="Quay lại gửi tin cho Phòng Chung">
+                &times; Hủy chat riêng
+              </button>
+            </div>
+
+            <!-- Khung Nhập & Các Nút Thao Tác -->
+            <div class="composer-box">
+              
+              <!-- Nút Mở Emoji Picker -->
+              <div class="emoji-picker-anchor">
+                <button type="button" class="composer-icon-btn" id="btnOpenEmoji" title="Chèn biểu tượng cảm xúc (Emoji)">
+                  😀
+                </button>
+                <!-- Popup Emoji -->
+                <div class="emoji-popup-panel hidden" id="emojiPopupPanel">
+                  <div class="emoji-popup-header">Chọn Emoji</div>
+                  <div class="emoji-grid" id="emojiGrid">
+                    <!-- Danh sách emoji phong phú -->
+                  </div>
+                </div>
+              </div>
+
+              <!-- Textarea Nhập Nội Dung Tin Nhắn -->
+              <textarea 
+                id="inputChatMessage" 
+                class="composer-textarea" 
+                rows="1" 
+                placeholder="Nhập tin nhắn... (Nhấn Enter để gửi, Shift+Enter xuống dòng, hoặc gõ /w <tên> <nội dung>)"
+                autocomplete="off"
+              ></textarea>
+
+              <!-- Nút Gửi Tin Nhắn -->
+              <button type="button" class="btn-send-message" id="btnSendMessage" title="Gửi tin nhắn (Enter)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              </button>
+            </div>
+
+            <!-- Phím tắt gợi ý bên dưới khung nhập -->
+            <div class="composer-footer-info">
+              <span>Nhấn <kbd>Enter</kbd> để gửi &bull; <kbd>Shift + Enter</kbd> xuống dòng</span>
+            </div>
+          </footer>
+        </section>
+      </div>
+    </section>
+
+
+
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <!-- TAB 3: KIẾN TRÚC MẠNG & GIẢI THÍCH GIAO THỨC (SEMINAR PRESENTATION) -->
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <section class="view-panel" id="viewArchitecture">
+      <div class="architecture-container">
+        
+        <div class="page-intro-header">
+          <span class="badge-mini">BÁO CÁO SEMINAR LẬP TRÌNH MẠNG</span>
+          <h2>Mô Hình Kiến Trúc Client-Server &amp; Giao Thức Truyền Tin</h2>
+          <p>Mô hình thiết kế hệ thống phân tán hỗ trợ cầu nối đa giao thức (Dual-Protocol Bridge) giữa WebSocket (Web) và Socket TCP truyền thống (Desktop).</p>
+        </div>
+
+        <!-- Biểu Đồ Trực Quan Kiến Trúc Mạng -->
+        <div class="architecture-diagram-card glassmorphism">
+          <h3 class="card-heading">1. Sơ Đồ Khối Luồng Dữ Liệu Hai Chiều</h3>
+          <div class="diagram-canvas-box" id="diagramCanvasBox">
+            <div class="diagram-node node-client-web">
+              <div class="node-icon">🌐</div>
+              <div class="node-title">Web Client (Browser)</div>
+              <div class="node-tech">HTML5 &bull; CSS3 &bull; JS (WebSocket)</div>
+              <div class="node-port">Port: Dynamic / Ephemeral</div>
+            </div>
+
+            <div class="diagram-edge edge-left">
+              <span class="edge-label">WebSocket RFC 6455<br>JSON-Lines Frame</span>
+              <div class="edge-arrow-left-right"></div>
+            </div>
+
+            <div class="diagram-node node-server-hub">
+              <div class="node-icon">⚡</div>
+              <div class="node-title">CENTRAL DUAL-HUB SERVER</div>
+              <div class="node-tech">Python 3 &bull; Asyncio &bull; AioHTTP</div>
+              <div class="node-ports-dual">
+                <span class="chip-port">HTTP/WS: 8080</span>
+                <span class="chip-port">TCP Socket: 9000</span>
+              </div>
+            </div>
+
+            <div class="diagram-edge edge-right">
+              <span class="edge-label">Raw TCP Socket IPv4<br>JSON-Lines Stream (\n)</span>
+              <div class="edge-arrow-left-right"></div>
+            </div>
+
+            <div class="diagram-node node-client-tcp">
+              <div class="node-icon">💻</div>
+              <div class="node-title">Desktop Client (Python)</div>
+              <div class="node-tech">Python Tkinter GUI / CLI</div>
+              <div class="node-port">Socket FD: TCP Connection</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bảng Phân Tích Chi Tiết 8 Mã Lệnh Trong Giao Thức (Protocol Specs) -->
+        <div class="protocol-specs-card glassmorphism space-top">
+          <h3 class="card-heading">2. Định Dạng Gói Tin Chuẩn Trong Giao Thức JSON-Lines</h3>
+          <p class="specs-intro">Cấu trúc gói tin tầng ứng dụng (Application Layer Protocol): <code>{"type": "&lt;TÊN_LỆNH&gt;", "data": { ... }}\n</code></p>
+
+          <div class="table-responsive-wrapper">
+            <table class="modern-data-table">
+              <thead>
+                <tr>
+                  <th style="width: 130px;">Mã Giao Thức</th>
+                  <th style="width: 140px;">Chiều Truyền</th>
+                  <th>Cấu Trúc Payload (data)</th>
+                  <th>Mô Tả Chức Năng</th>
+                  <th style="width: 100px;">Thử Gói Tin</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyProtocolSpecs">
+                <!-- Sẽ render tự động qua JavaScript -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Trình Thử Nghiệm & Mô Phỏng Gói Tin Tương Tác -->
+        <div class="simulator-card glassmorphism space-top">
+          <h3 class="card-heading">3. Bộ Mô Phỏng Gói Tin Trực Quan (Interactive Packet Simulator)</h3>
+          <p class="specs-intro">Nhấn nút bên dưới để quan sát chu trình đóng gói, truyền qua mạng và giải mã của một bản tin:</p>
+
+          <div class="simulator-controls">
+            <button class="btn-sim-action" data-sim="JOIN">Mô phỏng Gói JOIN</button>
+            <button class="btn-sim-action" data-sim="MSG">Mô phỏng Gói MSG (Chat Chung)</button>
+            <button class="btn-sim-action" data-sim="PRIVATE">Mô phỏng Gói PRIVATE (Chat Riêng)</button>
+            <button class="btn-sim-action" data-sim="QUIT">Mô phỏng Gói QUIT</button>
+          </div>
+
+          <div class="simulation-stage" id="simulationStage">
+            <div class="sim-step" id="simStep1">
+              <span class="step-num">1</span>
+              <span class="step-label">Tạo Bản Tin (Client)</span>
+              <div class="step-box" id="simBox1">Sẵn sàng</div>
+            </div>
+            <div class="sim-arrow">➔</div>
+            <div class="sim-step" id="simStep2">
+              <span class="step-num">2</span>
+              <span class="step-label">Xử Lý &amp; Gắn Client ID (Server)</span>
+              <div class="step-box" id="simBox2">Chờ nhận gói</div>
+            </div>
+            <div class="sim-arrow">➔</div>
+            <div class="sim-step" id="simStep3">
+              <span class="step-num">3</span>
+              <span class="step-label">Phát Lại &amp; Render UI (Clients)</span>
+              <div class="step-box" id="simBox3">Chờ phát sóng</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+  <!-- =================================================================== -->
+  <!-- NGĂN KÉO GIÁM SÁT GÓI TIN MẠNG (LIVE PROTOCOL INSPECTOR DRAWER) -->
+  <!-- =================================================================== -->
+  <aside class="inspector-drawer" id="inspectorDrawer">
+    <div class="drawer-header">
+      <div class="drawer-title-box">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="4 17 10 11 4 5"></polyline>
+          <line x1="12" y1="19" x2="20" y2="19"></line>
+        </svg>
+        <h3>Live Protocol Packet Inspector</h3>
+      </div>
+      <button class="btn-close-drawer" id="btnCloseInspector" title="Đóng ngăn kéo">&times;</button>
+    </div>
+
+    <!-- Thanh Lọc & Điều Khiển Gói Tin -->
+    <div class="drawer-controls">
+      <div class="packet-stats">
+        <span>Gói tin: <strong id="drawerPacketCount">0</strong></span>
+        <span>&bull;</span>
+        <span>Dung lượng: <strong id="drawerPacketBytes">0 B</strong></span>
+      </div>
+      <div class="drawer-btns">
+        <button class="btn-drawer-action" id="btnClearPackets">Xóa Gói</button>
+      </div>
+    </div>
+
+    <!-- Danh Sách Các Gói Tin Nhận/Gửi Theo Dòng Thời Gian -->
+    <div class="packet-stream-list" id="packetStreamList">
+      <div class="empty-packets-hint" id="emptyPacketsHint">
+        Chưa có gói tin nào được ghi nhận. Hãy gửi hoặc nhận tin nhắn để theo dõi luồng giao thức!
+      </div>
+    </div>
+  </aside>
+
+  <!-- Overlay làm tối nền khi mở ngăn kéo -->
+  <div class="drawer-backdrop" id="drawerBackdrop"></div>
+
+  <!-- Thông báo Toast nổi góc màn hình -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- =================================================================== -->
+  <!-- SCRIPTS LOGIC (VANILLA JS MODULES) -->
+  <!-- =================================================================== -->
+  <script src="/js/sound_fx.js"></script>
+  <script src="/js/protocol_view.js"></script>
+  <script src="/js/client_chat.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
