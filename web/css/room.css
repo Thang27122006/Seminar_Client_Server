@@ -1,0 +1,1012 @@
+/* ===================================================================
+   NetSphere Meet - 100% Google Meet In-Call Experience Stylesheet
+   Full Dark Meeting Room & Green Room Preview (#202124)
+   =================================================================== */
+
+:root {
+  --meet-bg: #202124;
+  --meet-surface: #28292c;
+  --meet-tile-bg: #3c4043;
+  --meet-tile-hover: #43474b;
+  --meet-border: rgba(255, 255, 255, 0.12);
+  --meet-pill-bg: #2d2e30;
+
+  --meet-blue: #8ab4f8;
+  --meet-blue-primary: #1a73e8;
+  --meet-red: #ea4335;
+  --meet-green: #34a853;
+  --meet-yellow: #fbbc04;
+
+  --meet-text: #ffffff;
+  --meet-text-sub: #bdc1c6;
+  --meet-text-muted: #80868b;
+  --meet-font: 'Google Sans', 'Inter', Roboto, -apple-system, sans-serif;
+  --meet-mono: 'JetBrains Mono', Consolas, monospace;
+}
+
+body.meet-in-call-body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--meet-bg);
+  color: var(--meet-text);
+  font-family: var(--meet-font);
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   1. GREEN ROOM / WAITING ROOM (SẢNH XEM TRƯỚC MIC & CAMERA)
+   ───────────────────────────────────────────────────────────────── */
+.green-room-container {
+  position: fixed;
+  inset: 0;
+  background-color: var(--meet-bg);
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+.green-room-container.hidden {
+  display: none !important;
+}
+
+.green-room-grid {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 1100px;
+  width: 100%;
+  gap: 60px;
+}
+
+/* Khối xem trước video / avatar */
+.gr-preview-box {
+  width: 540px;
+  height: 340px;
+  background: #3c4043;
+  border-radius: 16px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gr-video-stream {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1); /* Gương webcam tự nhiên */
+}
+
+.gr-avatar-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.gr-avatar-circle {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: var(--meet-blue-primary);
+  color: #fff;
+  font-size: 2.5rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.gr-cam-status-text {
+  font-size: 0.95rem;
+  color: var(--meet-text-sub);
+}
+
+/* Nút điều khiển Mic / Cam trên sảnh chờ chuẩn Google Meet (Hình 2) */
+.gr-controls-overlay {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  z-index: 10;
+}
+
+.gr-btn-circle {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: none;
+  color: #202124;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  transition: all 0.2s cubic-bezier(0, 0, 0.2, 1);
+}
+
+.gr-btn-circle:hover {
+  background: #f1f3f4;
+  transform: scale(1.06);
+}
+
+.gr-btn-circle.off {
+  background: #fce8e6 !important;
+  color: #c5221f !important;
+  border-radius: 14px !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+}
+
+.gr-btn-circle.off:hover {
+  background: #fad2cf !important;
+  color: #b3261e !important;
+  transform: scale(1.06);
+}
+
+.gr-btn-circle svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+/* Cột phải sảnh chờ */
+.gr-details-box {
+  flex: 1;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.gr-heading {
+  font-size: 2.2rem;
+  font-weight: 400;
+  margin: 0;
+  color: #fff;
+}
+
+.gr-people-in-call {
+  font-size: 0.95rem;
+  color: var(--meet-text-sub);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gr-input-name {
+  width: 100%;
+  height: 48px;
+  padding: 0 16px;
+  background: var(--meet-surface);
+  border: 1px solid var(--meet-border);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 1rem;
+  font-family: var(--meet-font);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.gr-input-name:focus {
+  border-color: var(--meet-blue);
+}
+
+.gr-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn-gr-join-now {
+  height: 48px;
+  padding: 0 28px;
+  background-color: var(--meet-blue-primary);
+  color: #fff;
+  border: none;
+  border-radius: 24px;
+  font-size: 1rem;
+  font-weight: 500;
+  font-family: var(--meet-font);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  transition: background-color 0.2s;
+}
+
+.btn-gr-join-now:hover {
+  background-color: #1765cc;
+}
+
+.btn-gr-present {
+  height: 48px;
+  padding: 0 20px;
+  background: transparent;
+  color: var(--meet-blue);
+  border: 1px solid var(--meet-blue);
+  border-radius: 24px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  font-family: var(--meet-font);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background-color 0.2s;
+}
+
+.btn-gr-present:hover {
+  background: rgba(138, 180, 248, 0.1);
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   2. IN-MEETING MAIN STAGE & VIDEO TILES GRID
+   ───────────────────────────────────────────────────────────────── */
+.meet-main-stage {
+  flex: 1;
+  display: flex;
+  position: relative;
+  overflow: hidden;
+  height: calc(100vh - 80px);
+}
+
+.meet-grid-container {
+  flex: 1;
+  display: grid;
+  padding: 16px;
+  gap: 12px;
+  align-content: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  overflow-y: auto;
+}
+
+/* Bố cục thích ứng (1, 2, 3-4, 5-9 người) */
+.meet-grid-container[data-tiles="1"] {
+  grid-template-columns: 1fr;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.meet-grid-container[data-tiles="2"] {
+  grid-template-columns: 1fr 1fr;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.meet-grid-container[data-tiles="3"],
+.meet-grid-container[data-tiles="4"] {
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+}
+
+.meet-grid-container[data-tiles="5"],
+.meet-grid-container[data-tiles="6"] {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+}
+
+.meet-grid-container[data-tiles="7"],
+.meet-grid-container[data-tiles="8"],
+.meet-grid-container[data-tiles="9"] {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+}
+
+/* Tile của từng người tham gia */
+.meet-participant-tile {
+  background: var(--meet-tile-bg);
+  border-radius: var(--radius-tile);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  border: 2px solid transparent;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+/* Viền phát sáng xanh dương khi người đó đang phát biểu */
+.meet-participant-tile.speaking {
+  border-color: var(--meet-blue);
+  box-shadow: 0 0 16px rgba(138, 180, 248, 0.6);
+}
+
+.tile-video-elem {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.tile-avatar-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.tile-avatar-circle {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: var(--meet-blue-primary);
+  color: #fff;
+  font-size: 2rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Tên và biểu tượng Mic ở góc trái dưới */
+.tile-name-tag {
+  position: absolute;
+  bottom: 10px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  padding: 4px 10px;
+  border-radius: 16px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #fff;
+}
+
+.tile-mic-indicator {
+  display: flex;
+  align-items: center;
+  color: #fff;
+}
+
+.tile-mic-indicator.muted {
+  color: var(--meet-red);
+}
+
+/* Huy hiệu Giơ Tay Phát Biểu (Raise Hand) */
+.tile-hand-badge {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  background: #fbbc04;
+  color: #202124;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  animation: bounceHand 0.6s infinite alternate;
+}
+
+@keyframes bounceHand {
+  from { transform: translateY(0); }
+  to { transform: translateY(-4px); }
+}
+
+/* Thao tác hover trên Tile */
+.tile-hover-actions {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.meet-participant-tile:hover .tile-hover-actions {
+  opacity: 1;
+}
+
+.btn-tile-act {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  border: none;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.btn-tile-act:hover {
+  background: rgba(0, 0, 0, 0.9);
+}
+
+/* Chế độ Chia Sẻ Màn Hình (Screen Sharing) */
+.meet-presentation-stage {
+  flex: 1;
+  background: #000;
+  display: none;
+  flex-direction: column;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  margin: 10px;
+}
+
+.meet-presentation-stage.active {
+  display: flex;
+}
+
+.meet-main-stage.has-presentation .meet-presentation-stage {
+  flex: 3;
+}
+
+.meet-main-stage.has-presentation .meet-grid-container {
+  flex: 1;
+  max-width: 320px;
+  padding: 10px 6px;
+  grid-template-columns: 1fr !important;
+  grid-auto-rows: 180px;
+  overflow-y: auto;
+}
+
+.screen-video-wrapper {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.screen-video-elem {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+.screen-share-banner {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(26, 115, 232, 0.9);
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   3. THANH ĐIỀU KHIỂN ĐÁY GOOGLE MEET (BOTTOM FLOATING PILL BAR)
+   ───────────────────────────────────────────────────────────────── */
+.meet-bottom-bar {
+  height: 80px;
+  background: var(--meet-bg);
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--meet-border);
+  user-select: none;
+  z-index: 200;
+}
+
+.bottom-left-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #fff;
+}
+
+.meet-code-text {
+  font-family: var(--meet-mono);
+  color: var(--meet-text-sub);
+}
+
+/* Cụm Nút Tròn Trung Tâm */
+.bottom-center-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn-meet-ctrl {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--meet-surface-hover);
+  border: none;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.15s ease;
+}
+
+.btn-meet-ctrl:hover {
+  background: #505357;
+}
+
+.btn-meet-ctrl.off {
+  background: #fce8e6 !important;
+  color: #c5221f !important;
+  border-radius: 14px !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.btn-meet-ctrl.off:hover {
+  background: #fad2cf !important;
+  color: #b3261e !important;
+  transform: scale(1.05);
+}
+
+.btn-meet-ctrl.active-blue {
+  background: var(--meet-blue);
+  color: #202124;
+}
+
+.btn-meet-ctrl.raised {
+  background: var(--meet-yellow);
+  color: #202124;
+}
+
+/* Nút Đỏ Rời Cuộc Họp */
+.btn-meet-end-call {
+  height: 48px;
+  padding: 0 24px;
+  border-radius: 24px;
+  background-color: var(--meet-red);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s ease;
+}
+
+.btn-meet-end-call:hover {
+  background-color: var(--meet-red-hover);
+}
+
+/* Cụm Nút Bên Phải */
+.bottom-right-toggles {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-meet-tool {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+  transition: background-color 0.15s ease;
+}
+
+.btn-meet-tool:hover {
+  background: var(--meet-surface);
+}
+
+.btn-meet-tool.active {
+  color: var(--meet-blue);
+  background: rgba(138, 180, 248, 0.15);
+}
+
+.badge-tool-counter {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: var(--meet-blue-primary);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 10px;
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   4. GOOGLE MEET RIGHT SIDEPANEL (DRAWER: PEOPLE, CHAT, HOST CONTROLS)
+   ───────────────────────────────────────────────────────────────── */
+.meet-side-drawer {
+  width: 360px;
+  background: var(--meet-surface);
+  border-left: 1px solid var(--meet-border);
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.25s ease;
+  height: 100%;
+}
+
+.meet-side-drawer.hidden {
+  display: none !important;
+}
+
+.drawer-header {
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--meet-border);
+}
+
+.drawer-header h3 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 400;
+}
+
+.drawer-tabs-row {
+  display: flex;
+  border-bottom: 1px solid var(--meet-border);
+}
+
+.drawer-tab-btn {
+  flex: 1;
+  padding: 12px 8px;
+  background: transparent;
+  border: none;
+  color: var(--meet-text-sub);
+  font-size: 0.9rem;
+  font-family: var(--meet-font);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.15s;
+}
+
+.drawer-tab-btn.active {
+  color: var(--meet-blue);
+  border-bottom-color: var(--meet-blue);
+}
+
+.drawer-body-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.drawer-body-panel.hidden {
+  display: none;
+}
+
+/* Danh Sách Mọi Người (People Tab) */
+.people-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.people-info-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.people-avatar-sm {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--meet-blue-primary);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.people-name {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #fff;
+}
+
+.people-role-tag {
+  font-size: 0.75rem;
+  color: var(--meet-blue);
+  margin-left: 4px;
+}
+
+/* In-Call Messages Stream (Chat Tab) */
+.in-call-chat-stream {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  padding-bottom: 10px;
+}
+
+.chat-bubble-meet {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chat-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: var(--meet-text-muted);
+}
+
+.chat-author-name {
+  font-weight: 600;
+  color: var(--meet-blue);
+}
+
+.chat-message-text {
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: #fff;
+  word-break: break-word;
+}
+
+.chat-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--meet-border);
+}
+
+.input-meet-chat {
+  flex: 1;
+  height: 42px;
+  padding: 0 14px;
+  background: var(--meet-surface-variant);
+  border: 1px solid var(--meet-border);
+  border-radius: 20px;
+  color: #fff;
+  font-family: var(--meet-font);
+  font-size: 0.9rem;
+  outline: none;
+}
+
+.btn-send-meet-chat {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--meet-blue-primary);
+  border: none;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+/* Host Controls Switch Item */
+.host-toggle-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--meet-border);
+}
+
+.host-toggle-desc {
+  max-width: 250px;
+}
+
+.host-toggle-title {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #fff;
+}
+
+.host-toggle-sub {
+  font-size: 0.75rem;
+  color: var(--meet-text-muted);
+  margin-top: 2px;
+}
+
+/* Switch Toggle Component */
+.switch-gm {
+  position: relative;
+  display: inline-block;
+  width: 38px;
+  height: 20px;
+}
+
+.switch-gm input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider-gm {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background-color: #5f6368;
+  border-radius: 20px;
+  transition: .3s;
+}
+
+.slider-gm:before {
+  position: absolute;
+  content: "";
+  height: 14px;
+  width: 14px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  border-radius: 50%;
+  transition: .3s;
+}
+
+input:checked + .slider-gm {
+  background-color: var(--meet-blue-primary);
+}
+
+input:checked + .slider-gm:before {
+  transform: translateX(18px);
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   5. GOOGLE MEET FLOATING EMOJIS & REACTIONS
+   ───────────────────────────────────────────────────────────────── */
+.emoji-fly-container {
+  position: absolute;
+  bottom: 90px;
+  left: 40px;
+  pointer-events: none;
+  z-index: 300;
+  width: 100px;
+  height: 250px;
+}
+
+.floating-emoji {
+  position: absolute;
+  bottom: 0;
+  font-size: 2.2rem;
+  animation: floatUpFade 2.4s ease-out forwards;
+}
+
+@keyframes floatUpFade {
+  0% { transform: translateY(0) scale(0.6); opacity: 0; }
+  15% { transform: translateY(-20px) scale(1.15); opacity: 1; }
+  80% { opacity: 0.9; }
+  100% { transform: translateY(-240px) scale(1.05); opacity: 0; }
+}
+
+.reaction-popup {
+  position: absolute;
+  bottom: 86px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #28292c;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 30px;
+  padding: 6px 14px;
+  display: flex;
+  gap: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  z-index: 250;
+  animation: popIn 0.15s ease-out;
+}
+
+@keyframes popIn {
+  from { opacity: 0; transform: translate(-50%, 10px) scale(0.95); }
+  to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+
+.reaction-popup.hidden {
+  display: none !important;
+}
+
+.btn-emoji-react {
+  background: transparent;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 50%;
+  line-height: 1;
+  transition: transform 0.15s, background-color 0.15s;
+}
+
+.btn-emoji-react:hover {
+  transform: scale(1.3);
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   6. CAPTIONS (CC) & TOAST NOTIFICATION
+   ───────────────────────────────────────────────────────────────── */
+.meet-captions-container {
+  position: absolute;
+  bottom: 96px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  padding: 8px 20px;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  max-width: 800px;
+  text-align: center;
+  z-index: 210;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.meet-captions-container.hidden {
+  display: none !important;
+}
+
+.meet-toast {
+  position: fixed;
+  bottom: 96px;
+  left: 24px;
+  background: #323232;
+  color: #fff;
+  padding: 12px 20px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: opacity 0.25s, transform 0.25s;
+}
+
+.meet-toast.hidden {
+  opacity: 0;
+  transform: translateY(16px);
+  pointer-events: none;
+}

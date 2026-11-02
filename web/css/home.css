@@ -1,0 +1,653 @@
+/* ===================================================================
+   NetSphere Meet - 100% Google Meet Interface Stylesheet
+   Signature Google Meet Design System (Light & Dark Theme)
+   =================================================================== */
+
+:root {
+  --google-sans: 'Google Sans', 'Inter', Roboto, -apple-system, sans-serif;
+  --google-roboto: Roboto, Arial, sans-serif;
+  --google-mono: 'JetBrains Mono', Consolas, monospace;
+
+  /* Google Palette */
+  --gm-blue: #1a73e8;
+  --gm-blue-hover: #1765cc;
+  --gm-blue-light: #e8f0fe;
+  --gm-blue-dark: #8ab4f8;
+
+  --gm-red: #ea4335;
+  --gm-red-hover: #d93025;
+  --gm-red-light: #fce8e6;
+
+  --gm-green: #34a853;
+  --gm-green-dark: #81c995;
+  --gm-yellow: #fbbc04;
+
+  /* Theme: Dark (Default for Meet) */
+  --gm-bg: #202124;
+  --gm-surface: #2d2e30;
+  --gm-surface-hover: #3c4043;
+  --gm-surface-variant: #303134;
+  --gm-border: #3c4043;
+  --gm-border-subtle: rgba(255, 255, 255, 0.12);
+
+  --gm-text-primary: #ffffff;
+  --gm-text-secondary: #9aa0a6;
+  --gm-text-muted: #80868b;
+  --gm-icon: #e8eaed;
+
+  --radius-pill: 9999px;
+  --radius-card: 16px;
+  --radius-tile: 12px;
+  --radius-sm: 8px;
+}
+
+[data-theme="light"] {
+  --gm-bg: #ffffff;
+  --gm-surface: #f1f3f4;
+  --gm-surface-hover: #e8eaed;
+  --gm-surface-variant: #f8f9fa;
+  --gm-border: #dadce0;
+  --gm-border-subtle: rgba(0, 0, 0, 0.12);
+
+  --gm-text-primary: #202124;
+  --gm-text-secondary: #5f6368;
+  --gm-text-muted: #80868b;
+  --gm-icon: #5f6368;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body.meet-home-body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--google-sans);
+  background-color: var(--gm-bg);
+  color: var(--gm-text-primary);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   1. GOOGLE MEET TOPBAR
+   ───────────────────────────────────────────────────────────────── */
+.meet-topbar-google {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 24px;
+  height: 64px;
+  background: var(--gm-bg);
+  border-bottom: 1px solid var(--gm-border-subtle);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.meet-brand-google {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+  color: inherit;
+}
+
+/* Biểu tượng Camera 4 màu đặc trưng của Google Meet */
+.google-meet-logo-icon {
+  width: 40px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.meet-brand-title {
+  font-size: 1.35rem;
+  font-weight: 500;
+  color: var(--gm-text-primary);
+  letter-spacing: -0.01em;
+}
+
+.meet-brand-title strong {
+  font-weight: 600;
+  color: var(--gm-blue-dark);
+}
+
+.meet-brand-sub-badge {
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 2px 8px;
+  background: rgba(26, 115, 232, 0.15);
+  color: var(--gm-blue-dark);
+  border-radius: var(--radius-pill);
+  margin-left: 6px;
+  border: 1px solid rgba(26, 115, 232, 0.3);
+}
+
+/* Tiện ích bên phải Topbar */
+.topbar-right-google {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.gm-clock-box {
+  font-size: 1.05rem;
+  color: var(--gm-text-secondary);
+  font-weight: 400;
+  margin-right: 8px;
+  user-select: none;
+}
+
+.btn-icon-gm {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  color: var(--gm-icon);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.btn-icon-gm:hover {
+  background: var(--gm-surface-hover);
+}
+
+.user-avatar-gm {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--gm-blue);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  border: 2px solid transparent;
+  transition: border-color 0.2s;
+}
+
+.user-avatar-gm:hover {
+  border-color: var(--gm-blue-dark);
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   2. HERO SECTION (GOOGLE MEET MAIN HERO SPLIT)
+   ───────────────────────────────────────────────────────────────── */
+.meet-hero-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 1300px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 40px 48px;
+  gap: 64px;
+}
+
+.hero-left-column {
+  flex: 1;
+  max-width: 580px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.hero-heading-google {
+  font-size: 2.75rem;
+  font-weight: 400;
+  line-height: 1.25;
+  margin: 0;
+  color: var(--gm-text-primary);
+  letter-spacing: -0.02em;
+}
+
+.hero-desc-google {
+  font-size: 1.15rem;
+  line-height: 1.6;
+  color: var(--gm-text-secondary);
+  margin: 0;
+  font-weight: 400;
+}
+
+/* Nút Cuộc họp mới & Ô nhập mã */
+.meet-inputs-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  position: relative;
+}
+
+.btn-new-meeting-google {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  padding: 0 24px;
+  background-color: var(--gm-blue);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 0.95rem;
+  font-weight: 500;
+  font-family: var(--google-sans);
+  cursor: pointer;
+  box-shadow: 0 1px 2px 0 rgba(60,64,67,0.3), 0 1px 3px 1px rgba(60,64,67,0.15);
+  transition: background-color 0.2s, box-shadow 0.2s;
+}
+
+.btn-new-meeting-google:hover {
+  background-color: var(--gm-blue-hover);
+  box-shadow: 0 2px 6px 2px rgba(60,64,67,0.15);
+}
+
+.new-meeting-container {
+  position: relative;
+  display: inline-block;
+}
+
+.gm-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 320px;
+  background: var(--gm-surface);
+  border: 1px solid var(--gm-border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  padding: 8px 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px);
+  transition: opacity 0.2s cubic-bezier(0, 0, 0.2, 1), transform 0.2s cubic-bezier(0, 0, 0.2, 1), visibility 0.2s;
+  pointer-events: none;
+}
+
+/* Đệm chống trượt chuột giữa nút và menu */
+.gm-dropdown-menu::before {
+  content: "";
+  position: absolute;
+  top: -8px;
+  left: 0;
+  right: 0;
+  height: 8px;
+}
+
+/* Tự động xuất hiện khi di chuột (hover) hoặc khi click mở */
+.new-meeting-container:hover .gm-dropdown-menu:not(.force-hidden),
+.gm-dropdown-menu.show {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.gm-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 20px;
+  background: transparent;
+  border: none;
+  color: var(--gm-text-primary);
+  font-size: 0.9rem;
+  font-family: var(--google-sans);
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.15s;
+  width: 100%;
+}
+
+.gm-dropdown-item:hover {
+  background-color: var(--gm-surface-hover);
+}
+
+.gm-dropdown-item svg {
+  color: var(--gm-text-secondary);
+  flex-shrink: 0;
+}
+
+/* Ô nhập mã hoặc đường liên kết */
+.enter-code-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 270px;
+}
+
+.gm-input-wrapper {
+  position: relative;
+  flex: 1;
+}
+
+.gm-input-wrapper svg {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--gm-text-secondary);
+}
+
+.input-code-google {
+  width: 100%;
+  height: 48px;
+  padding: 0 16px 0 44px;
+  background: transparent;
+  border: 1px solid var(--gm-border);
+  border-radius: var(--radius-sm);
+  color: var(--gm-text-primary);
+  font-size: 0.95rem;
+  font-family: var(--google-sans);
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.input-code-google:focus {
+  border-color: var(--gm-blue-dark);
+  box-shadow: 0 0 0 1px var(--gm-blue-dark);
+}
+
+.btn-join-google {
+  height: 48px;
+  padding: 0 20px;
+  background: transparent;
+  border: none;
+  color: var(--gm-text-muted);
+  font-size: 0.95rem;
+  font-weight: 500;
+  font-family: var(--google-sans);
+  border-radius: var(--radius-sm);
+  cursor: not-allowed;
+  transition: all 0.2s;
+}
+
+.btn-join-google.active {
+  color: var(--gm-blue-dark);
+  cursor: pointer;
+}
+
+.btn-join-google.active:hover {
+  background: rgba(26, 115, 232, 0.1);
+}
+
+.hero-divider-google {
+  height: 1px;
+  background: var(--gm-border-subtle);
+  margin: 16px 0 0 0;
+}
+
+.hero-learn-more-link {
+  font-size: 0.9rem;
+  color: var(--gm-text-secondary);
+  text-decoration: none;
+}
+
+.hero-learn-more-link a {
+  color: var(--gm-blue-dark);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.hero-learn-more-link a:hover {
+  text-decoration: underline;
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   3. HERO RIGHT COLUMN (GOOGLE MEET CAROUSEL & ACTIVE ROOMS)
+   ───────────────────────────────────────────────────────────────── */
+.hero-right-column {
+  flex: 1;
+  max-width: 500px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 20px;
+}
+
+/* Carousel minh họa tròn chuẩn Google Meet */
+.gm-carousel-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.gm-carousel-illustration-box {
+  width: 320px;
+  height: 320px;
+  border-radius: 50%;
+  background: var(--gm-surface);
+  border: 1px solid var(--gm-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.gm-carousel-slide {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  width: 100%;
+  height: 100%;
+}
+
+.gm-carousel-slide.active {
+  display: flex;
+  animation: fadeInSlide 0.3s ease;
+}
+
+@keyframes fadeInSlide {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.slide-graphic-svg {
+  width: 180px;
+  height: 180px;
+  margin-bottom: 8px;
+}
+
+.gm-carousel-text {
+  margin-top: 18px;
+  max-width: 400px;
+}
+
+.gm-carousel-title {
+  font-size: 1.45rem;
+  font-weight: 400;
+  margin: 0 0 10px 0;
+  color: var(--gm-text-primary);
+}
+
+.gm-carousel-desc {
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--gm-text-secondary);
+  margin: 0;
+}
+
+/* Pagination Dots */
+.gm-carousel-pagination {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.gm-page-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gm-border);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.gm-page-dot.active {
+  background: var(--gm-blue-dark);
+  width: 24px;
+  border-radius: var(--radius-pill);
+}
+
+/* Danh sách phòng họp đang mở */
+.gm-active-meetings-card {
+  width: 100%;
+  background: var(--gm-surface);
+  border: 1px solid var(--gm-border);
+  border-radius: var(--radius-card);
+  padding: 18px 20px;
+  text-align: left;
+}
+
+.gm-active-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.gm-active-header h4 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--gm-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gm-room-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--gm-surface-variant);
+  border: 1px solid var(--gm-border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+  transition: background-color 0.15s;
+}
+
+.gm-room-item:hover {
+  background: var(--gm-surface-hover);
+}
+
+.gm-room-code-badge {
+  font-family: var(--google-mono);
+  color: var(--gm-blue-dark);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   4. MODALS (GOOGLE & ZOOM AUTH STYLE)
+   ───────────────────────────────────────────────────────────────── */
+.gm-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.gm-modal-overlay.hidden {
+  display: none;
+}
+
+.gm-modal-card {
+  width: 100%;
+  max-width: 440px;
+  background: var(--gm-bg);
+  border: 1px solid var(--gm-border);
+  border-radius: var(--radius-card);
+  padding: 28px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  position: relative;
+  animation: modalScaleUp 0.2s ease-out;
+}
+
+@keyframes modalScaleUp {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.gm-copy-link-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  background: var(--gm-surface);
+  border: 1px solid var(--gm-border);
+  border-radius: var(--radius-sm);
+  margin: 16px 0;
+}
+
+.gm-copy-link-box input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--gm-text-primary);
+  font-family: var(--google-mono);
+  font-size: 0.85rem;
+  padding: 10px 0;
+  outline: none;
+}
+
+.btn-gm-copy {
+  background: transparent;
+  border: none;
+  color: var(--gm-blue-dark);
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  font-family: var(--google-sans);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-gm-copy:hover {
+  background: rgba(26, 115, 232, 0.1);
+}
+
+/* Responsive */
+@media (max-width: 960px) {
+  .meet-hero-container {
+    flex-direction: column;
+    padding: 32px 20px;
+    gap: 40px;
+  }
+  .hero-heading-google {
+    font-size: 2.15rem;
+  }
+}

@@ -171,7 +171,8 @@ class ChatGUI:
             fg=self.COLOR_TEXT, bg=self.COLOR_CARD
         ).grid(row=0, column=0, sticky=tk.W, pady=(6, 2))
         self.entry_host = ttk.Entry(form, width=32, style="Custom.TEntry")
-        self.entry_host.insert(0, HOST)
+        default_host = '127.0.0.1' if HOST == '0.0.0.0' else HOST
+        self.entry_host.insert(0, default_host)
         self.entry_host.grid(row=1, column=0, sticky=tk.W, pady=(0, 10))
 
         # Port
