@@ -32,7 +32,7 @@ from server.rooms import room_manager, MeetingRoom
 # Cấu hình cổng mặc định
 TCP_PORT = getattr(config, 'PORT', 9000)
 WEB_PORT = getattr(config, 'WEB_PORT', 8080)
-HOST = '0.0.0.0'
+HOST = getattr(config, 'HOST', '0.0.0.0')
 BUFFER_SIZE = getattr(config, 'BUFFER_SIZE', 4096)
 ENCODING = getattr(config, 'ENCODING', 'utf-8')
 
@@ -771,23 +771,32 @@ async def websocket_client_handler(request):
                     # WebRTC signaling (offer, answer, candidate) chuyển tiếp giữa các peer trong phòng
                     to_id = data.get('to_id')
                     to_user = data.get('to_user')
+                    signal_type = data.get('signal_type')
                     signal_payload = {
                         "from_id": session.id,
                         "from_user": session.username,
+                        "from_fullname": session.fullname or session.username,
                         "signal": data.get('signal'),
-                        "signal_type": data.get('signal_type'),
+                        "signal_type": signal_type,
+                        "is_screen": data.get('is_screen', False),
                         "room": session.room_code
                     }
                     target_session = None
-                    if to_id:
-                        target_session = hub.clients.get(to_id)
-                    elif to_user:
+                    if to_id is not None:
+                        try:
+                            target_session = hub.clients.get(int(to_id))
+                        except (ValueError, TypeError):
+                            target_session = hub.clients.get(to_id)
+                    if not target_session and to_user:
                         for s in hub.clients.values():
                             if s.is_active and s.username == to_user and getattr(s, 'room_code', '') == session.room_code:
                                 target_session = s
                                 break
                     if target_session and target_session.is_active:
+                        hub.log(f"📡 [SIGNAL] {signal_type} từ #{session.id} ({session.username}) -> #{target_session.id} ({target_session.username})", tag='SIGNAL')
                         await hub.send_to_session(target_session, 'SIGNAL', signal_payload)
+                    else:
+                        hub.log(f"⚠️ [SIGNAL FAIL] Không tìm thấy người nhận #{to_id} ({to_user}) trong phòng {session.room_code}", tag='WARN')
 
                 elif msg_type == 'REACTION':
                     # Biểu cảm emoji Google Meet (💖, 👍, 🎉, 👏, 😂, 😮)
@@ -1146,7 +1155,15 @@ async def admin_page_handler(request):
 
 def create_web_application(hub):
     """Khởi tạo ứng dụng aiohttp web."""
-    app = web.Application()
+    @web.middleware
+    async def no_cache_middleware(request, handler):
+        response = await handler(request)
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        return response
+
+    app = web.Application(middlewares=[no_cache_middleware])
     app['hub'] = hub
 
     # Routes WebSocket

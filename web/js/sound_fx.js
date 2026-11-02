@@ -155,6 +155,8 @@ class SoundSynthesizer {
       osc.start(now);
       osc.stop(now + 0.18);
     } catch (_) {}
+  }
+
   // Âm thanh giơ tay phát biểu chuẩn Google Meet (Triple-tone warm chime)
   playHandRaise() {
     if (this.isMuted) return;

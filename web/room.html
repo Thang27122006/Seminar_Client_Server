@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="/css/room.css">
+  <link rel="stylesheet" href="/css/room.css?v=4.1">
 </head>
 <body class="meet-in-call-body">
 
@@ -51,7 +51,7 @@
         <video id="grVideoStream" class="gr-video-stream" autoplay playsinline muted></video>
 
         <div class="gr-avatar-placeholder" id="grAvatarPlaceholder" style="display: none;">
-          <div class="gr-avatar-circle" id="grAvatarCircle">M</div>
+          <div class="gr-avatar-circle" id="grAvatarCircle">T</div>
           <div class="gr-cam-status-text">Máy ảnh đang tắt</div>
         </div>
 
@@ -133,7 +133,7 @@
   <main class="meet-main-stage" id="meetMainStage">
     <!-- Khung Trình Bày Màn Hình (Khi Có Người Share Screen) -->
     <div class="meet-presentation-stage" id="meetPresentationStage">
-      <video id="screenShareVideo" class="screen-video-elem" autoplay playsinline></video>
+      <video id="screenShareVideo" class="screen-video-elem" autoplay playsinline muted></video>
       <div class="screen-share-banner" id="screenShareBanner">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
@@ -406,8 +406,8 @@
   </div>
 
   <!-- Scripts -->
-  <script src="/js/auth.js"></script>
-  <script src="/js/sound_fx.js"></script>
-  <script src="/js/meet_room.js"></script>
+  <script src="/js/auth.js?v=4.1"></script>
+  <script src="/js/sound_fx.js?v=4.1"></script>
+  <script src="/js/meet_room.js?v=4.1"></script>
 </body>
 </html>

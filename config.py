@@ -1,7 +1,7 @@
 # Địa chỉ IP của Server
 # '127.0.0.1' (localhost): Server chạy trên chính máy này
 # '0.0.0.0': Cho phép kết nối từ cả máy này lẫn các máy khác trong mạng LAN
-HOST = '0.0.0.0'
+HOST = '127.0.0.1'
 
 # Port lắng nghe của Server TCP Socket (Dành cho Client Python Desktop)
 PORT = 9000

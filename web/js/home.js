@@ -111,13 +111,26 @@ class NetSphereHome {
     this.renderUserBadge();
   }
 
+  getInitials(name) {
+    if (!name) return 'U';
+    let clean = name.replace(/[\(\[][^\)\]]*[\)\]]?/g, ' ').replace(/[\(\)\[\]\{\}]/g, ' ').trim();
+    const words = clean.split(/\s+/).filter(Boolean);
+    if (words.length === 0) {
+      const match = name.match(/[\p{L}\p{N}]/u);
+      return match ? match[0].toUpperCase() : 'U';
+    }
+    const targetWord = words[words.length - 1];
+    const letterMatch = targetWord.match(/[\p{L}\p{N}]/u);
+    return letterMatch ? letterMatch[0].toUpperCase() : 'U';
+  }
+
   renderUserBadge() {
     if (!this.userAuthContainer) return;
     const user = window.authManager?.getUser();
 
     if (user) {
-      const initial = (user.fullname || user.username || 'U').charAt(0).toUpperCase();
-      const color = user.avatar_color || '#6366F1';
+      const initial = this.getInitials(user.fullname || user.username);
+      const color = user.avatar_color || '#1a73e8';
 
       this.userAuthContainer.innerHTML = `
         <div class="user-profile-pill" id="btnUserMenu" title="Tài khoản: ${user.fullname} (@${user.username})">

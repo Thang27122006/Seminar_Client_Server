@@ -448,16 +448,45 @@ body.meet-in-call-body {
   display: none;
   flex-direction: column;
   position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  margin: 10px;
 }
 
 .meet-presentation-stage.active {
   display: flex;
 }
 
+.meet-main-stage.has-presentation .meet-presentation-stage {
+  flex: 3;
+}
+
+.meet-main-stage.has-presentation .meet-grid-container {
+  flex: 1;
+  max-width: 320px;
+  padding: 10px 6px;
+  grid-template-columns: 1fr !important;
+  grid-auto-rows: 180px;
+  overflow-y: auto;
+}
+
+.screen-video-wrapper {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
 .screen-video-elem {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  background: #000;
 }
 
 .screen-share-banner {

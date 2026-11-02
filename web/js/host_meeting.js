@@ -506,7 +506,7 @@ class MeetingHostController {
 
     this.tilesContainer.innerHTML = activeClients.map(c => {
       const isWeb = c.type === 'websocket';
-      const avatarChar = (c.username?.[0] || 'U').toUpperCase();
+      const avatarChar = this.getInitials(c.fullname || c.username);
       const avatarColor = this.generateColorFromString(c.username || 'User');
       const isMuted = !!c.is_muted;
       const statusIcon = isMuted ? '🔇' : '🟢';
@@ -596,7 +596,7 @@ class MeetingHostController {
     }
 
     this.participantsScrollList.innerHTML = filtered.map(c => {
-      const avatarChar = (c.username?.[0] || 'U').toUpperCase();
+      const avatarChar = this.getInitials(c.fullname || c.username);
       const avatarColor = this.generateColorFromString(c.username || 'User');
       const isMuted = !!c.is_muted;
       const isWeb = c.type === 'websocket';
@@ -831,6 +831,19 @@ class MeetingHostController {
     }
     const h = Math.abs(hash % 360);
     return `hsl(${h}, 65%, 48%)`;
+  }
+
+  getInitials(name) {
+    if (!name) return 'U';
+    let clean = name.replace(/[\(\[][^\)\]]*[\)\]]?/g, ' ').replace(/[\(\)\[\]\{\}]/g, ' ').trim();
+    const words = clean.split(/\s+/).filter(Boolean);
+    if (words.length === 0) {
+      const match = name.match(/[\p{L}\p{N}]/u);
+      return match ? match[0].toUpperCase() : 'U';
+    }
+    const targetWord = words[words.length - 1];
+    const letterMatch = targetWord.match(/[\p{L}\p{N}]/u);
+    return letterMatch ? letterMatch[0].toUpperCase() : 'U';
   }
 
   escapeHTML(str) {

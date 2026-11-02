@@ -34,6 +34,9 @@
 
     // Remote Participants
     participants: new Map(), // username -> user object
+    avatarColors: new Map(), // key -> { initial, color }
+    peerConnections: new Map(), // key -> RTCPeerConnection
+    remoteScreenStream: null,
 
     // UI
     captionsEnabled: false,
@@ -149,11 +152,131 @@
     }, duration);
   }
 
+  const GOOGLE_MEET_PALETTE = [
+    '#1a73e8', // Google Blue
+    '#d93025', // Google Red
+    '#1e8e3e', // Google Green
+    '#f29900', // Google Yellow / Orange
+    '#9334e6', // Purple
+    '#00897b', // Teal
+    '#e64a19', // Deep Orange
+    '#3949ab', // Indigo
+    '#0097a7', // Cyan
+    '#d81b60', // Pink
+    '#5e35b1', // Deep Purple
+    '#2e7d32', // Dark Green
+    '#0288d1', // Light Blue
+    '#c2185b', // Ruby / Crimson
+    '#7b1fa2', // Purple Dark
+    '#00796b'  // Teal Dark
+  ];
+
+  function hashString(str) {
+    let hash = 0;
+    if (!str) return 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = (hash << 5) - hash + str.charCodeAt(i);
+      hash |= 0;
+    }
+    return Math.abs(hash);
+  }
+
   function getInitials(name) {
     if (!name) return 'U';
-    const parts = name.trim().split(/\s+/);
-    if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    // 1. Loại bỏ toàn bộ nội dung trong ngoặc đơn, ngoặc vuông và triệt tiêu mọi ký tự ngoặc
+    let clean = name.replace(/[\(\[][^\)\]]*[\)\]]?/g, ' ').replace(/[\(\)\[\]\{\}]/g, ' ').trim();
+    // 2. Tách từ
+    const words = clean.split(/\s+/).filter(Boolean);
+    if (words.length === 0) {
+      const match = name.match(/[\p{L}\p{N}]/u);
+      return match ? match[0].toUpperCase() : 'U';
+    }
+    // 3. Quy chuẩn tên tiếng Việt: lấy tên gọi chính (từ cuối cùng)
+    const targetWord = words[words.length - 1];
+    // 4. Chỉ lấy đúng 1 ký tự chữ cái duy nhất (loại bỏ tuyệt đối mọi ký tự ngoặc, đặc biệt)
+    const letterMatch = targetWord.match(/[\p{L}\p{N}]/u);
+    return letterMatch ? letterMatch[0].toUpperCase() : 'U';
+  }
+
+  function resolveAvatarColors() {
+    const colorMap = new Map();
+    const usedByInitial = new Map(); // initial -> Set<color>
+    const allUsedColors = new Set();
+
+    const participantsList = [];
+    const localUsername = state.currentUser ? state.currentUser.username : 'local';
+    const localFullname = state.currentUser ? (state.currentUser.fullname || state.currentUser.username) : 'Bạn';
+    const localColor = state.currentUser ? state.currentUser.avatar_color : null;
+
+    participantsList.push({
+      key: 'local',
+      username: localUsername,
+      fullname: localFullname,
+      avatar_color: localColor || '#1a73e8'
+    });
+
+    const remotes = Array.from(state.participants.values()).sort((a, b) =>
+      (a.username || '').localeCompare(b.username || '')
+    );
+
+    remotes.forEach(u => {
+      participantsList.push({
+        key: u.username,
+        username: u.username,
+        fullname: u.fullname || u.username,
+        avatar_color: u.avatar_color
+      });
+    });
+
+    participantsList.forEach((user, index) => {
+      const initial = getInitials(user.fullname || user.username);
+      if (!usedByInitial.has(initial)) {
+        usedByInitial.set(initial, new Set());
+      }
+      const initialUsed = usedByInitial.get(initial);
+
+      // Điểm màu xuất phát theo mã băm hoặc avatar_color đã có
+      let baseIdx = 0;
+      if (user.avatar_color && GOOGLE_MEET_PALETTE.includes(user.avatar_color)) {
+        baseIdx = GOOGLE_MEET_PALETTE.indexOf(user.avatar_color);
+      } else {
+        baseIdx = hashString(user.username || user.fullname || user.key) % GOOGLE_MEET_PALETTE.length;
+      }
+
+      let chosenColor = null;
+
+      // Ưu tiên 1: Không trùng với người cùng chữ cái đầu VÀ chưa dùng trong phòng
+      for (let offset = 0; offset < GOOGLE_MEET_PALETTE.length; offset++) {
+        const candidate = GOOGLE_MEET_PALETTE[(baseIdx + offset) % GOOGLE_MEET_PALETTE.length];
+        if (!initialUsed.has(candidate) && !allUsedColors.has(candidate)) {
+          chosenColor = candidate;
+          break;
+        }
+      }
+
+      // Ưu tiên 2: Nếu đã hết màu mới trong phòng, bắt buộc KHÔNG ĐƯỢC TRÙNG với người cùng chữ cái đầu
+      if (!chosenColor) {
+        for (let offset = 0; offset < GOOGLE_MEET_PALETTE.length; offset++) {
+          const candidate = GOOGLE_MEET_PALETTE[(baseIdx + offset) % GOOGLE_MEET_PALETTE.length];
+          if (!initialUsed.has(candidate)) {
+            chosenColor = candidate;
+            break;
+          }
+        }
+      }
+
+      // Trường hợp hiếm (quá 16 người cùng chữ cái đầu): dịch bước theo vị trí
+      if (!chosenColor) {
+        chosenColor = GOOGLE_MEET_PALETTE[(baseIdx + index) % GOOGLE_MEET_PALETTE.length];
+      }
+
+      initialUsed.add(chosenColor);
+      allUsedColors.add(chosenColor);
+      colorMap.set(user.key, { initial, color: chosenColor });
+    });
+
+    state.avatarColors = colorMap;
+    return colorMap;
   }
 
   function formatTime(date = new Date()) {
@@ -326,6 +449,246 @@
   }
 
   // ─────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────
+  // WEBRTC PEER CONNECTION & SCREEN SHARING SIGNALING
+  // ─────────────────────────────────────────────────────────────────
+  const RTC_CONFIG = {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' }
+    ]
+  };
+
+  const pendingIceCandidates = new Map(); // key -> Array<candidate>
+
+  function storePeer(keyOrUser, pc) {
+    if (!keyOrUser) return;
+    if (typeof keyOrUser === 'object') {
+      if (keyOrUser.id != null) state.peerConnections.set(String(keyOrUser.id), pc);
+      if (keyOrUser.username) state.peerConnections.set(String(keyOrUser.username), pc);
+    } else {
+      state.peerConnections.set(String(keyOrUser), pc);
+    }
+  }
+
+  function getPeer(keyOrUser) {
+    if (!keyOrUser) return null;
+    if (typeof keyOrUser === 'object') {
+      return (keyOrUser.id != null && state.peerConnections.get(String(keyOrUser.id))) ||
+             (keyOrUser.username && state.peerConnections.get(String(keyOrUser.username))) || null;
+    }
+    return state.peerConnections.get(String(keyOrUser)) || null;
+  }
+
+  async function flushPendingIceCandidates(key, pc) {
+    if (!key || !pc) return;
+    const strKey = String(key);
+    const queue = pendingIceCandidates.get(strKey);
+    if (queue && queue.length > 0) {
+      pendingIceCandidates.delete(strKey);
+      for (const cand of queue) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(cand));
+          console.log(`🧊 [WebRTC] Đã nạp ICE candidate tồn đọng cho ${strKey}`);
+        } catch (err) {
+          console.warn(`Lỗi khi nạp candidate tồn đọng cho ${strKey}:`, err);
+        }
+      }
+    }
+  }
+
+  async function createPeerOfferForUser(targetUser, stream) {
+    if (!stream) return;
+    console.log(`📡 [WebRTC] Khởi tạo Peer Offer chia sẻ màn hình tới ${targetUser.username} (ID: ${targetUser.id})`);
+
+    // Đóng peer cũ nếu đã có
+    const oldPc = getPeer(targetUser);
+    if (oldPc) {
+      try { oldPc.close(); } catch (_) {}
+    }
+    if (targetUser.id != null) state.peerConnections.delete(String(targetUser.id));
+    if (targetUser.username) state.peerConnections.delete(String(targetUser.username));
+
+    const pc = new RTCPeerConnection(RTC_CONFIG);
+    storePeer(targetUser, pc);
+
+    // Gắn track video màn hình vào peer connection
+    stream.getTracks().forEach(track => {
+      pc.addTrack(track, stream);
+    });
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate && state.ws && state.ws.readyState === WebSocket.OPEN) {
+        state.ws.send(JSON.stringify({
+          type: 'SIGNAL',
+          data: {
+            to_id: targetUser.id,
+            to_user: targetUser.username,
+            signal_type: 'candidate',
+            signal: event.candidate.toJSON ? event.candidate.toJSON() : event.candidate
+          }
+        }));
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      console.log(`📡 [WebRTC] Kết nối tới ${targetUser.username}: ${pc.connectionState}`);
+    };
+
+    try {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+        state.ws.send(JSON.stringify({
+          type: 'SIGNAL',
+          data: {
+            to_id: targetUser.id,
+            to_user: targetUser.username,
+            signal_type: 'offer',
+            signal: offer.toJSON ? offer.toJSON() : { type: offer.type, sdp: offer.sdp },
+            is_screen: true
+          }
+        }));
+        console.log(`📡 [WebRTC] Đã gửi Offer màn hình tới ${targetUser.username}`);
+      }
+    } catch (err) {
+      console.warn('Failed to create offer for', targetUser.username, err);
+    }
+  }
+
+  function broadcastScreenShare(stream) {
+    state.participants.forEach(user => {
+      createPeerOfferForUser(user, stream);
+    });
+  }
+
+  async function handleSignalMessage(data) {
+    const fromId = data.from_id;
+    const fromUser = data.from_user;
+    const signalType = data.signal_type;
+    const signal = data.signal;
+
+    if (!signalType || !signal) return;
+
+    if (signalType === 'offer') {
+      console.log(`📡 [WebRTC] Nhận được Offer màn hình từ ${data.from_fullname || fromUser} (#${fromId})`);
+      const oldPc = getPeer(fromId) || getPeer(fromUser);
+      if (oldPc) {
+        try { oldPc.close(); } catch (_) {}
+      }
+
+      const pc = new RTCPeerConnection(RTC_CONFIG);
+      if (fromId != null) storePeer(fromId, pc);
+      if (fromUser) storePeer(fromUser, pc);
+
+      pc.ontrack = (event) => {
+        console.log(`📺 [WebRTC] Nhận luồng video màn hình trực tiếp từ ${data.from_fullname || fromUser}!`);
+        const stream = event.streams && event.streams[0] ? event.streams[0] : new MediaStream([event.track]);
+        state.remoteScreenStream = stream;
+
+        if (DOM.screenShareVideo) {
+          DOM.screenShareVideo.muted = true;
+          DOM.screenShareVideo.srcObject = stream;
+          DOM.screenShareVideo.play().catch(e => console.warn('screenShareVideo play warning:', e));
+        }
+        if (DOM.meetPresentationStage) {
+          DOM.meetPresentationStage.classList.add('active');
+        }
+        if (DOM.meetMainStage) {
+          DOM.meetMainStage.classList.add('has-presentation');
+        }
+        if (DOM.screenSharePresenterText) {
+          DOM.screenSharePresenterText.textContent = `${data.from_fullname || fromUser} đang trình bày màn hình`;
+        }
+        if (DOM.btnStopPresentation) {
+          DOM.btnStopPresentation.style.display = 'none'; // Người xem không có nút "Dừng chia sẻ"
+        }
+
+        event.track.onunmute = () => {
+          if (DOM.screenShareVideo) {
+            DOM.screenShareVideo.play().catch(() => {});
+          }
+        };
+      };
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate && state.ws && state.ws.readyState === WebSocket.OPEN) {
+          state.ws.send(JSON.stringify({
+            type: 'SIGNAL',
+            data: {
+              to_id: fromId,
+              to_user: fromUser,
+              signal_type: 'candidate',
+              signal: event.candidate.toJSON ? event.candidate.toJSON() : event.candidate
+            }
+          }));
+        }
+      };
+
+      pc.onconnectionstatechange = () => {
+        console.log(`📡 [WebRTC Receiver] Trạng thái kết nối: ${pc.connectionState}`);
+      };
+
+      try {
+        await pc.setRemoteDescription(new RTCSessionDescription(signal));
+        // Xả hàng đợi các candidate đến sớm trước khi Remote Description được set
+        if (fromId != null) await flushPendingIceCandidates(fromId, pc);
+        if (fromUser) await flushPendingIceCandidates(fromUser, pc);
+
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+          state.ws.send(JSON.stringify({
+            type: 'SIGNAL',
+            data: {
+              to_id: fromId,
+              to_user: fromUser,
+              signal_type: 'answer',
+              signal: answer.toJSON ? answer.toJSON() : { type: answer.type, sdp: answer.sdp }
+            }
+          }));
+          console.log(`📡 [WebRTC] Đã gửi Answer phản hồi cho ${fromUser}`);
+        }
+      } catch (err) {
+        console.warn('Failed to handle WebRTC offer from', fromUser, err);
+      }
+
+    } else if (signalType === 'answer') {
+      console.log(`📡 [WebRTC] Nhận được Answer từ ${fromUser} (#${fromId})`);
+      const pc = getPeer(fromId) || getPeer(fromUser);
+      if (pc) {
+        try {
+          await pc.setRemoteDescription(new RTCSessionDescription(signal));
+          if (fromId != null) await flushPendingIceCandidates(fromId, pc);
+          if (fromUser) await flushPendingIceCandidates(fromUser, pc);
+        } catch (err) {
+          console.warn('Failed to set remote answer from', fromUser, err);
+        }
+      }
+
+    } else if (signalType === 'candidate') {
+      const pc = getPeer(fromId) || getPeer(fromUser);
+      if (pc && pc.remoteDescription && pc.remoteDescription.type) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(signal));
+        } catch (err) {
+          console.warn('Failed to add ICE candidate from', fromUser, err);
+        }
+      } else {
+        // Lưu tạm candidate vào queue chờ setRemoteDescription xong
+        const qKey = String(fromId != null ? fromId : fromUser);
+        if (!pendingIceCandidates.has(qKey)) {
+          pendingIceCandidates.set(qKey, []);
+        }
+        pendingIceCandidates.get(qKey).push(signal);
+      }
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────
   // SCREEN SHARING (GETDISPLAYMEDIA)
   // ─────────────────────────────────────────────────────────────────
   async function toggleScreenShare() {
@@ -334,28 +697,73 @@
       return;
     }
 
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+      showToast('⚠️ Tính năng chia sẻ màn hình yêu cầu kết nối an toàn (localhost hoặc HTTPS)', 4000);
+      return;
+    }
+
+    let stream = null;
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { cursor: 'always' },
-        audio: false
-      });
+      // 1. Thử lấy quyền chia sẻ với cấu hình tiêu chuẩn
+      try {
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: false
+        });
+      } catch (errConstraint) {
+        // Fallback đơn giản nhất cho các trình duyệt hoặc hệ điều hành (Linux portal / Wayland / Windows)
+        stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      }
+
+      if (!stream) return;
+
       state.screenStream = stream;
       state.mediaState.screen = true;
 
-      DOM.screenShareVideo.srcObject = stream;
-      DOM.meetPresentationStage.classList.add('active');
-      DOM.btnMeetShareScreen.classList.add('active-blue');
-      DOM.screenSharePresenterText.textContent = 'Bạn đang trình bày màn hình cho mọi người';
+      if (DOM.screenShareVideo) {
+        DOM.screenShareVideo.muted = true;
+        DOM.screenShareVideo.srcObject = stream;
+        try {
+          await DOM.screenShareVideo.play();
+        } catch (_) {}
+      }
 
-      // Listen for browser native stop button
-      stream.getVideoTracks()[0].onended = () => {
-        stopScreenShare();
-      };
+      if (DOM.meetPresentationStage) {
+        DOM.meetPresentationStage.classList.add('active');
+      }
+      if (DOM.meetMainStage) {
+        DOM.meetMainStage.classList.add('has-presentation');
+      }
+      if (DOM.btnMeetShareScreen) {
+        DOM.btnMeetShareScreen.classList.add('active-blue');
+      }
+      if (DOM.screenSharePresenterText) {
+        DOM.screenSharePresenterText.textContent = 'Bạn đang trình bày màn hình cho mọi người';
+      }
+      if (DOM.btnStopPresentation) {
+        DOM.btnStopPresentation.style.display = 'inline-block';
+      }
+
+      // Phát luồng WebRTC tới tất cả các thành viên trong phòng (bên M sẽ thấy ngay!)
+      broadcastScreenShare(stream);
+
+      // Lắng nghe sự kiện người dùng nhấn "Dừng chia sẻ" (Stop sharing) trên thanh điều khiển của trình duyệt
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.onended = () => {
+          stopScreenShare();
+        };
+      }
 
       sendMediaState();
-      showToast('Đang chia sẻ màn hình');
+      showToast('Đang chia sẻ màn hình 🖥️');
     } catch (err) {
       console.warn('Screen share cancelled/denied:', err);
+      if (err.name === 'NotAllowedError') {
+        showToast('Bạn đã hủy yêu cầu chia sẻ màn hình');
+      } else {
+        showToast('Không thể chia sẻ màn hình: ' + (err.message || 'Lỗi thiết bị'));
+      }
     }
   }
 
@@ -365,8 +773,29 @@
       state.screenStream = null;
     }
     state.mediaState.screen = false;
-    DOM.meetPresentationStage.classList.remove('active');
-    DOM.btnMeetShareScreen.classList.remove('active-blue');
+
+    // Đóng tất cả kết nối WebRTC đang phát
+    state.peerConnections.forEach(pc => {
+      try {
+        pc.close();
+      } catch (_) {}
+    });
+    state.peerConnections.clear();
+    pendingIceCandidates.clear();
+
+    if (DOM.screenShareVideo) {
+      DOM.screenShareVideo.srcObject = null;
+    }
+    if (DOM.meetPresentationStage) {
+      DOM.meetPresentationStage.classList.remove('active');
+    }
+    if (DOM.meetMainStage) {
+      DOM.meetMainStage.classList.remove('has-presentation');
+    }
+    if (DOM.btnMeetShareScreen) {
+      DOM.btnMeetShareScreen.classList.remove('active-blue');
+    }
+
     sendMediaState();
     showToast('Đã dừng chia sẻ màn hình');
   }
@@ -487,6 +916,10 @@
         handleRemoteMediaState(data);
         break;
 
+      case 'SIGNAL':
+        handleSignalMessage(data);
+        break;
+
       case 'REACTION':
         if (data.username !== (state.currentUser && state.currentUser.username)) {
           triggerEmoji(data.emoji, false);
@@ -523,6 +956,13 @@
     usersDetail.forEach(u => {
       if (u.username !== myUsername) {
         state.participants.set(u.username, u);
+        // Nếu mình đang chia sẻ màn hình, tự động kết nối WebRTC gửi stream cho người mới vào
+        if (state.mediaState.screen && state.screenStream) {
+          const key = String(u.id || u.username);
+          if (!state.peerConnections.has(key)) {
+            createPeerOfferForUser(u, state.screenStream);
+          }
+        }
       }
     });
 
@@ -537,6 +977,38 @@
       if (data.media_state && data.media_state.hand) {
         if (window.soundFX) window.soundFX.playHandRaise();
         showToast(`${user.fullname || user.username} đã giơ tay ✋`);
+      }
+      // Khi người trong phòng bắt đầu chia sẻ màn hình
+      if (data.media_state && data.media_state.screen === true) {
+        if (DOM.meetPresentationStage) {
+          DOM.meetPresentationStage.classList.add('active');
+        }
+        if (DOM.meetMainStage) {
+          DOM.meetMainStage.classList.add('has-presentation');
+        }
+        if (DOM.screenSharePresenterText) {
+          DOM.screenSharePresenterText.textContent = `${user.fullname || user.username} đang trình bày màn hình`;
+        }
+        if (DOM.btnStopPresentation) {
+          DOM.btnStopPresentation.style.display = 'none';
+        }
+      }
+      // Khi người đang trình bày dừng chia sẻ màn hình
+      if (data.media_state && data.media_state.screen === false) {
+        if (state.remoteScreenStream) {
+          state.remoteScreenStream.getTracks().forEach(t => t.stop());
+          state.remoteScreenStream = null;
+        }
+        if (DOM.screenShareVideo) {
+          DOM.screenShareVideo.srcObject = null;
+        }
+        if (DOM.meetPresentationStage) {
+          DOM.meetPresentationStage.classList.remove('active');
+        }
+        if (DOM.meetMainStage) {
+          DOM.meetMainStage.classList.remove('has-presentation');
+        }
+        showToast(`${user.fullname || user.username} đã dừng chia sẻ màn hình`);
       }
       renderVideoGrid();
       updateParticipantsUI();
@@ -581,6 +1053,12 @@
     const totalTiles = 1 + state.participants.size;
     DOM.meetGridContainer.setAttribute('data-tiles', String(Math.min(totalTiles, 9)));
 
+    const colorMap = resolveAvatarColors();
+    const localColorInfo = colorMap.get('local') || {
+      initial: getInitials(state.currentUser ? (state.currentUser.fullname || state.currentUser.username) : 'Bạn'),
+      color: '#1a73e8'
+    };
+
     // Keep track of existing tiles
     const existingTiles = new Set();
     Array.from(DOM.meetGridContainer.children).forEach(child => {
@@ -589,22 +1067,25 @@
 
     // 1. Render Local Tile
     const localId = `tile-${state.currentUser ? state.currentUser.username : 'local'}`;
+    const localFullname = state.currentUser ? `${state.currentUser.fullname || state.currentUser.username} (Bạn)` : 'Bạn';
     if (!document.getElementById(localId)) {
       const localTile = createTileElement({
         id: localId,
         username: state.currentUser ? state.currentUser.username : 'Bạn',
-        fullname: state.currentUser ? `${state.currentUser.fullname || state.currentUser.username} (Bạn)` : 'Bạn',
+        fullname: localFullname,
         isLocal: true,
-        avatar_color: (state.currentUser && state.currentUser.avatar_color) || '#1a73e8',
+        avatar_color: localColorInfo.color,
+        avatar_initial: localColorInfo.initial,
         media_state: state.mediaState,
         is_host: state.isHost
       });
       DOM.meetGridContainer.appendChild(localTile);
     } else {
       updateTileContent(document.getElementById(localId), {
-        fullname: state.currentUser ? `${state.currentUser.fullname || state.currentUser.username} (Bạn)` : 'Bạn',
+        fullname: localFullname,
         isLocal: true,
-        avatar_color: (state.currentUser && state.currentUser.avatar_color) || '#1a73e8',
+        avatar_color: localColorInfo.color,
+        avatar_initial: localColorInfo.initial,
         media_state: state.mediaState,
         is_host: state.isHost
       });
@@ -613,6 +1094,10 @@
     // 2. Render Remote Participants Tiles
     state.participants.forEach((user, uname) => {
       const tileId = `tile-${uname}`;
+      const remoteColorInfo = colorMap.get(uname) || {
+        initial: getInitials(user.fullname || user.username),
+        color: '#34a853'
+      };
       let tile = document.getElementById(tileId);
       if (!tile) {
         tile = createTileElement({
@@ -620,7 +1105,8 @@
           username: user.username,
           fullname: user.fullname || user.username,
           isLocal: false,
-          avatar_color: user.avatar_color || '#34a853',
+          avatar_color: remoteColorInfo.color,
+          avatar_initial: remoteColorInfo.initial,
           media_state: user.media_state || { mic: true, cam: true, hand: false },
           is_host: user.is_host,
           type: user.type
@@ -630,7 +1116,8 @@
         updateTileContent(tile, {
           fullname: user.fullname || user.username,
           isLocal: false,
-          avatar_color: user.avatar_color || '#34a853',
+          avatar_color: remoteColorInfo.color,
+          avatar_initial: remoteColorInfo.initial,
           media_state: user.media_state || { mic: true, cam: true, hand: false },
           is_host: user.is_host,
           type: user.type
@@ -651,10 +1138,16 @@
     const localId = `tile-${state.currentUser ? state.currentUser.username : 'local'}`;
     const localTile = document.getElementById(localId);
     if (localTile) {
+      const colorMap = resolveAvatarColors();
+      const localColorInfo = colorMap.get('local') || {
+        initial: getInitials(state.currentUser ? (state.currentUser.fullname || state.currentUser.username) : 'Bạn'),
+        color: '#1a73e8'
+      };
       updateTileContent(localTile, {
         fullname: state.currentUser ? `${state.currentUser.fullname || state.currentUser.username} (Bạn)` : 'Bạn',
         isLocal: true,
-        avatar_color: (state.currentUser && state.currentUser.avatar_color) || '#1a73e8',
+        avatar_color: localColorInfo.color,
+        avatar_initial: localColorInfo.initial,
         media_state: state.mediaState,
         is_host: state.isHost
       });
@@ -686,7 +1179,7 @@
     if (info.isLocal && state.localStream && isCamOn) {
       html += `<video class="tile-video-elem" autoplay playsinline muted></video>`;
     } else {
-      const initial = getInitials(info.fullname);
+      const initial = info.avatar_initial || getInitials(info.fullname);
       html += `
         <div class="tile-avatar-box">
           <div class="tile-avatar-circle" style="background-color: ${info.avatar_color || '#1a73e8'};">
@@ -802,20 +1295,32 @@
     if (!DOM.drawerPeopleList) return;
     DOM.drawerPeopleList.innerHTML = '';
 
+    const colorMap = resolveAvatarColors();
+    const localColorInfo = colorMap.get('local') || {
+      initial: getInitials(state.currentUser ? (state.currentUser.fullname || state.currentUser.username) : 'Bạn'),
+      color: '#1a73e8'
+    };
+
     // 1. Local user row
     const localUser = state.currentUser || { username: 'local', fullname: 'Bạn', avatar_color: '#1a73e8' };
     DOM.drawerPeopleList.appendChild(createPeopleItemRow({
       fullname: `${localUser.fullname || localUser.username} (Bạn)`,
-      avatar_color: localUser.avatar_color || '#1a73e8',
+      avatar_color: localColorInfo.color,
+      avatar_initial: localColorInfo.initial,
       is_host: state.isHost,
       isMicOn: state.mediaState.mic
     }));
 
     // 2. Remote users rows
-    state.participants.forEach(u => {
+    state.participants.forEach((u, uname) => {
+      const remColorInfo = colorMap.get(uname) || {
+        initial: getInitials(u.fullname || u.username),
+        color: '#34a853'
+      };
       DOM.drawerPeopleList.appendChild(createPeopleItemRow({
         fullname: u.fullname || u.username,
-        avatar_color: u.avatar_color || '#34a853',
+        avatar_color: remColorInfo.color,
+        avatar_initial: remColorInfo.initial,
         is_host: u.is_host,
         type: u.type,
         isMicOn: u.media_state ? u.media_state.mic : true
@@ -826,7 +1331,7 @@
   function createPeopleItemRow(item) {
     const row = document.createElement('div');
     row.className = 'people-item-row';
-    const initial = getInitials(item.fullname);
+    const initial = item.avatar_initial || getInitials(item.fullname);
     const micIcon = item.isMicOn
       ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>`
       : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ea4335" stroke-width="2"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"></path><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>`;
@@ -956,7 +1461,7 @@
     updateParticipantsUI();
 
     if (withScreen) {
-      setTimeout(() => toggleScreenShare(), 500);
+      toggleScreenShare();
     }
   }
 
@@ -995,6 +1500,15 @@
     if (DOM.grBtnCam) DOM.grBtnCam.addEventListener('click', toggleCam);
     if (DOM.btnGrJoinNow) DOM.btnGrJoinNow.addEventListener('click', () => joinMeeting(false));
     if (DOM.btnGrPresent) DOM.btnGrPresent.addEventListener('click', () => joinMeeting(true));
+    if (DOM.grInputUsername) {
+      DOM.grInputUsername.addEventListener('input', () => {
+        const val = DOM.grInputUsername.value.trim();
+        const initial = getInitials(val || 'Khách');
+        if (DOM.grChipAvatar) DOM.grChipAvatar.textContent = initial;
+        if (DOM.grAvatarCircle) DOM.grAvatarCircle.textContent = initial;
+        if (DOM.grChipName) DOM.grChipName.textContent = val || 'Khách';
+      });
+    }
 
     // Bottom Bar Controls
     if (DOM.btnMeetMic) DOM.btnMeetMic.addEventListener('click', toggleMic);
@@ -1140,9 +1654,17 @@
       const user = window.Auth.getUser();
       if (user) {
         state.currentUser = user;
+        const initial = getInitials(user.fullname || user.username);
+        const color = user.avatar_color || '#1a73e8';
         if (DOM.grChipName) DOM.grChipName.textContent = user.fullname || user.username;
-        if (DOM.grChipAvatar) DOM.grChipAvatar.textContent = getInitials(user.fullname || user.username);
-        if (DOM.grAvatarCircle) DOM.grAvatarCircle.textContent = getInitials(user.fullname || user.username);
+        if (DOM.grChipAvatar) {
+          DOM.grChipAvatar.textContent = initial;
+          DOM.grChipAvatar.style.backgroundColor = color;
+        }
+        if (DOM.grAvatarCircle) {
+          DOM.grAvatarCircle.textContent = initial;
+          DOM.grAvatarCircle.style.backgroundColor = color;
+        }
         if (DOM.grInputUsername) DOM.grInputUsername.value = user.fullname || user.username;
       }
     }
