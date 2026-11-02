@@ -216,8 +216,24 @@
         <div class="in-call-chat-stream" id="meetChatStream">
           <!-- Tin nhắn chat sẽ được thêm vào đây -->
         </div>
+        <!-- Khung xem trước tệp/ảnh đính kèm trước khi gửi -->
+        <div class="chat-attachment-preview hidden" id="chatAttachmentPreview">
+          <div class="preview-thumbnail-box" id="previewThumbBox"></div>
+          <div class="preview-info-col">
+            <span class="preview-file-name" id="previewFileName"></span>
+            <span class="preview-file-size" id="previewFileSize"></span>
+          </div>
+          <button type="button" class="btn-remove-attachment" id="btnRemoveAttachment" title="Hủy đính kèm">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+
         <form class="chat-input-row" id="formMeetChat" style="margin-top: auto; padding: 12px 0;">
-          <input type="text" class="input-meet-chat" id="inputMeetChat" placeholder="Gửi tin nhắn cho mọi người..." autocomplete="off">
+          <input type="file" id="chatFileInput" style="display: none;" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar">
+          <button type="button" class="btn-attach-meet-chat" id="btnAttachFile" title="Đính kèm file hoặc hình ảnh">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+          </button>
+          <input type="text" class="input-meet-chat" id="inputMeetChat" placeholder="Gửi tin nhắn hoặc dán ảnh (Ctrl+V)..." autocomplete="off">
           <button type="submit" class="btn-send-meet-chat" id="btnSendMeetChat" title="Gửi tin nhắn">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
           </button>
@@ -405,9 +421,27 @@
     <span id="meetToastMessage">Đã sao chép đường liên kết tham gia cuộc họp.</span>
   </div>
 
+  <!-- Modal Xem Ảnh Toàn Màn Hình (Lightbox) -->
+  <div class="image-lightbox-modal hidden" id="imageLightboxModal">
+    <div class="lightbox-overlay" id="lightboxOverlay"></div>
+    <div class="lightbox-container">
+      <button class="btn-lightbox-close" id="btnLightboxClose" title="Đóng (Esc)">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+      <img src="" id="lightboxImage" class="lightbox-img" alt="Ảnh phóng to">
+      <div class="lightbox-footer">
+        <span id="lightboxCaption" class="lightbox-caption"></span>
+        <a href="#" id="lightboxDownloadBtn" download class="btn-lightbox-download" title="Tải ảnh về máy">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          <span>Tải xuống</span>
+        </a>
+      </div>
+    </div>
+  </div>
+
   <!-- Scripts -->
-  <script src="/js/auth.js?v=4.1"></script>
-  <script src="/js/sound_fx.js?v=4.1"></script>
-  <script src="/js/meet_room.js?v=4.1"></script>
+  <script src="/js/auth.js?v=5.0"></script>
+  <script src="/js/sound_fx.js?v=5.0"></script>
+  <script src="/js/meet_room.js?v=5.0"></script>
 </body>
 </html>

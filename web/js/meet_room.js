@@ -42,6 +42,7 @@
     captionsEnabled: false,
     activeDrawer: null, // 'people' | 'chat' | 'host' | 'info' | null
     unreadChatCount: 0,
+    pendingAttachment: null,
     ws: null,
     pingInterval: null
   };
@@ -125,6 +126,19 @@
     meetChatStream: document.getElementById('meetChatStream'),
     formMeetChat: document.getElementById('formMeetChat'),
     inputMeetChat: document.getElementById('inputMeetChat'),
+    chatFileInput: document.getElementById('chatFileInput'),
+    btnAttachFile: document.getElementById('btnAttachFile'),
+    chatAttachmentPreview: document.getElementById('chatAttachmentPreview'),
+    previewThumbBox: document.getElementById('previewThumbBox'),
+    previewFileName: document.getElementById('previewFileName'),
+    previewFileSize: document.getElementById('previewFileSize'),
+    btnRemoveAttachment: document.getElementById('btnRemoveAttachment'),
+    imageLightboxModal: document.getElementById('imageLightboxModal'),
+    lightboxOverlay: document.getElementById('lightboxOverlay'),
+    lightboxImage: document.getElementById('lightboxImage'),
+    lightboxCaption: document.getElementById('lightboxCaption'),
+    lightboxDownloadBtn: document.getElementById('lightboxDownloadBtn'),
+    btnLightboxClose: document.getElementById('btnLightboxClose'),
     drawerMeetingUrl: document.getElementById('drawerMeetingUrl'),
     btnDrawerCopyLink: document.getElementById('btnDrawerCopyLink'),
 
@@ -1353,6 +1367,84 @@
   }
 
   // ─────────────────────────────────────────────────────────────────
+  // IMAGE LIGHTBOX & FILE ATTACHMENTS
+  // ─────────────────────────────────────────────────────────────────
+  function openImageLightbox(url, name) {
+    if (!DOM.imageLightboxModal) return;
+    DOM.lightboxImage.src = url;
+    DOM.lightboxCaption.textContent = name || 'Hình ảnh';
+    DOM.lightboxDownloadBtn.href = url;
+    DOM.lightboxDownloadBtn.download = name || 'image.png';
+    DOM.imageLightboxModal.classList.remove('hidden');
+  }
+  window.openImageLightbox = openImageLightbox;
+
+  function closeImageLightbox() {
+    if (!DOM.imageLightboxModal) return;
+    DOM.imageLightboxModal.classList.add('hidden');
+    DOM.lightboxImage.src = '';
+  }
+
+  function setPendingAttachment(file) {
+    if (!file) return;
+    const MAX_SIZE = 50 * 1024 * 1024;
+    if (file.size > MAX_SIZE) {
+      showToast('⚠️ Kích thước tệp vượt quá giới hạn tối đa (50MB)');
+      return;
+    }
+
+    const isImage = file.type.startsWith('image/');
+    state.pendingAttachment = {
+      file: file,
+      name: file.name,
+      size: file.size,
+      is_image: isImage
+    };
+
+    if (DOM.previewFileName) DOM.previewFileName.textContent = file.name;
+    if (DOM.previewFileSize) {
+      let sizeStr = '';
+      if (file.size < 1024) sizeStr = `${file.size} B`;
+      else if (file.size < 1024 * 1024) sizeStr = `${(file.size / 1024).toFixed(1)} KB`;
+      else sizeStr = `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
+      DOM.previewFileSize.textContent = sizeStr;
+    }
+
+    if (DOM.previewThumbBox) {
+      DOM.previewThumbBox.innerHTML = '';
+      if (isImage) {
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(file);
+        DOM.previewThumbBox.appendChild(img);
+      } else {
+        DOM.previewThumbBox.innerHTML = `
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8ab4f8" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+        `;
+      }
+    }
+
+    if (DOM.chatAttachmentPreview) {
+      DOM.chatAttachmentPreview.classList.remove('hidden');
+    }
+    if (DOM.inputMeetChat) {
+      DOM.inputMeetChat.focus();
+    }
+  }
+
+  function clearPendingAttachment() {
+    state.pendingAttachment = null;
+    if (DOM.chatAttachmentPreview) {
+      DOM.chatAttachmentPreview.classList.add('hidden');
+    }
+    if (DOM.chatFileInput) {
+      DOM.chatFileInput.value = '';
+    }
+    if (DOM.previewThumbBox) {
+      DOM.previewThumbBox.innerHTML = '';
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────
   // IN-CALL CHAT STREAM
   // ─────────────────────────────────────────────────────────────────
   function appendChatMessage(data) {
@@ -1370,13 +1462,56 @@
     if (data.client_type === 'tcp') badge += '<span style="color: #c084fc; font-size: 0.7rem; margin-left: 4px;">💻 TCP</span>';
     if (data.isPrivate) badge += '<span style="color: #ea4335; font-size: 0.7rem; margin-left: 4px;">🔒 Riêng tư</span>';
 
+    let attachmentHtml = '';
+    if (data.attachment) {
+      const att = data.attachment;
+      if (att.is_image) {
+        attachmentHtml = `
+          <div class="chat-attachment-image">
+            <img src="${escapeHtml(att.url)}" alt="${escapeHtml(att.name)}" class="chat-img-elem" loading="lazy" onclick="window.openImageLightbox('${escapeHtml(att.url)}', '${escapeHtml(att.name)}')">
+            <div class="chat-image-footer">
+              <span class="chat-image-name" title="${escapeHtml(att.name)}">${escapeHtml(att.name)}</span>
+              <span class="chat-file-size">${escapeHtml(att.size_str || '')}</span>
+              <a href="${escapeHtml(att.url)}" download="${escapeHtml(att.name)}" class="chat-img-download-btn" title="Tải ảnh về máy">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              </a>
+            </div>
+          </div>
+        `;
+      } else {
+        const ext = (att.ext || '').toLowerCase();
+        let iconClass = 'icon-doc';
+        if (ext === '.pdf') iconClass = 'icon-pdf';
+        else if (['.xls', '.xlsx', '.csv'].includes(ext)) iconClass = 'icon-sheet';
+        else if (['.zip', '.rar', '.7z', '.tar', '.gz'].includes(ext)) iconClass = 'icon-zip';
+
+        attachmentHtml = `
+          <div class="chat-attachment-file">
+            <div class="file-icon-box ${iconClass}">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+            </div>
+            <div class="file-info-col">
+              <div class="file-name-text" title="${escapeHtml(att.name)}">${escapeHtml(att.name)}</div>
+              <div class="file-meta-sub">${escapeHtml(att.size_str || '')}</div>
+            </div>
+            <a href="${escapeHtml(att.url)}" download="${escapeHtml(att.name)}" class="btn-file-download" title="Tải xuống tệp">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            </a>
+          </div>
+        `;
+      }
+    }
+
+    const contentHtml = data.content ? `<div class="chat-message-text">${escapeHtml(data.content)}</div>` : '';
+
     bubble.innerHTML = `
       <div class="chat-meta-row">
         <span class="chat-author-name" style="color: ${authorColor};">${author}</span>
         ${badge}
         <span>${time}</span>
       </div>
-      <div class="chat-message-text">${escapeHtml(data.content || '')}</div>
+      ${attachmentHtml}
+      ${contentHtml}
     `;
 
     DOM.meetChatStream.appendChild(bubble);
@@ -1401,19 +1536,58 @@
     return div.innerHTML;
   }
 
-  function sendChatMessage(text) {
+  async function sendChatMessage(text) {
     text = (text || '').trim();
-    if (!text || !state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+    const hasAttachment = Boolean(state.pendingAttachment);
+
+    if (!text && !hasAttachment) return;
+    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
+      showToast('⚠️ Không có kết nối tới máy chủ');
+      return;
+    }
+
+    let attachmentPayload = null;
+
+    if (hasAttachment) {
+      const fileToUpload = state.pendingAttachment.file;
+      showToast(`Đang tải lên "${fileToUpload.name}"... ⏳`, 3000);
+      try {
+        const formData = new FormData();
+        formData.append('file', fileToUpload);
+        const resp = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData
+        });
+        const uploadResult = await resp.json();
+        if (uploadResult.status === 'success') {
+          attachmentPayload = {
+            url: uploadResult.url,
+            name: uploadResult.name,
+            size: uploadResult.size,
+            size_str: uploadResult.size_str,
+            is_image: uploadResult.is_image,
+            ext: uploadResult.ext
+          };
+          clearPendingAttachment();
+        } else {
+          showToast(`❌ Tải tệp thất bại: ${uploadResult.message || 'Lỗi không xác định'}`);
+          return;
+        }
+      } catch (err) {
+        showToast(`❌ Lỗi kết nối khi tải tệp: ${err.message}`);
+        return;
+      }
+    }
 
     // Check whisper command e.g. /w user message
     if (text.startsWith('/w ') || text.startsWith('/whisper ')) {
       const parts = text.split(/\s+/);
-      if (parts.length >= 3) {
+      if (parts.length >= 2) {
         const target = parts[1];
         const content = parts.slice(2).join(' ');
         state.ws.send(JSON.stringify({
           type: 'PRIVATE',
-          data: { to: target, content: content }
+          data: { to: target, content: content, attachment: attachmentPayload }
         }));
         return;
       }
@@ -1421,7 +1595,7 @@
 
     state.ws.send(JSON.stringify({
       type: 'MSG',
-      data: { content: text }
+      data: { content: text, attachment: attachmentPayload }
     }));
   }
 
@@ -1589,10 +1763,72 @@
     if (DOM.formMeetChat) {
       DOM.formMeetChat.addEventListener('submit', (e) => {
         e.preventDefault();
-        const text = DOM.inputMeetChat.value;
-        if (text) {
+        const text = DOM.inputMeetChat ? DOM.inputMeetChat.value : '';
+        if (text || state.pendingAttachment) {
           sendChatMessage(text);
-          DOM.inputMeetChat.value = '';
+          if (DOM.inputMeetChat) DOM.inputMeetChat.value = '';
+        }
+      });
+    }
+
+    // Attachment file input & button
+    if (DOM.btnAttachFile && DOM.chatFileInput) {
+      DOM.btnAttachFile.addEventListener('click', () => {
+        DOM.chatFileInput.click();
+      });
+      DOM.chatFileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+          setPendingAttachment(e.target.files[0]);
+        }
+      });
+    }
+
+    if (DOM.btnRemoveAttachment) {
+      DOM.btnRemoveAttachment.addEventListener('click', clearPendingAttachment);
+    }
+
+    // Lightbox modal close events
+    if (DOM.btnLightboxClose) DOM.btnLightboxClose.addEventListener('click', closeImageLightbox);
+    if (DOM.lightboxOverlay) DOM.lightboxOverlay.addEventListener('click', closeImageLightbox);
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && DOM.imageLightboxModal && !DOM.imageLightboxModal.classList.contains('hidden')) {
+        closeImageLightbox();
+      }
+    });
+
+    // Paste image from clipboard (Ctrl + V)
+    window.addEventListener('paste', (e) => {
+      const items = (e.clipboardData || (e.originalEvent && e.originalEvent.clipboardData))?.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].kind === 'file') {
+          const blob = items[i].getAsFile();
+          if (blob) {
+            setPendingAttachment(blob);
+            if (state.activeDrawer !== 'chat') {
+              openDrawer('chat');
+            }
+            break;
+          }
+        }
+      }
+    });
+
+    // Drag and drop file to chat
+    if (DOM.panelDrawerChat) {
+      DOM.panelDrawerChat.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        DOM.panelDrawerChat.classList.add('drag-over');
+      });
+      DOM.panelDrawerChat.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        DOM.panelDrawerChat.classList.remove('drag-over');
+      });
+      DOM.panelDrawerChat.addEventListener('drop', (e) => {
+        e.preventDefault();
+        DOM.panelDrawerChat.classList.remove('drag-over');
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+          setPendingAttachment(e.dataTransfer.files[0]);
         }
       });
     }

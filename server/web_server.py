@@ -12,6 +12,8 @@ import json
 import time
 import socket
 import asyncio
+import uuid
+import re
 from datetime import datetime
 from aiohttp import web, WSMsgType
 
@@ -350,8 +352,8 @@ class DualChatHub:
         await self._notify_admins('CLIENT_JOIN', session.to_dict(), room_code=room_code)
         return True
 
-    async def handle_chat_message(self, session, content):
-        """Xử lý tin nhắn chat công khai (MSG)."""
+    async def handle_chat_message(self, session, content, attachment=None):
+        """Xử lý tin nhắn chat công khai (MSG) có hỗ trợ đính kèm tệp / ảnh."""
         if not session.username:
             await self.send_to_session(session, MSG_ERROR, {
                 "message": "Bạn cần JOIN trước khi gửi tin nhắn."
@@ -374,19 +376,22 @@ class DualChatHub:
             return
 
         content = (content or '').strip()
-        if not content:
+        if not content and not attachment:
             return
 
         session.msg_count += 1
         self.total_messages += 1
         timestamp = datetime.now().strftime("%H:%M:%S")
 
-        self.log(f"💬 [{session.room_code}] #{session.id} {session.username}: {content}", tag='CHAT')
+        log_tag = "FILE" if attachment else "CHAT"
+        log_desc = f"[Tệp: {attachment.get('name')}] {content}" if attachment else content
+        self.log(f"💬 [{session.room_code}] #{session.id} {session.username}: {log_desc}", tag=log_tag)
 
         msg_payload = {
             "username": session.username,
             "fullname": session.fullname or session.username,
             "content": content,
+            "attachment": attachment,
             "timestamp": timestamp,
             "client_id": session.id,
             "client_type": session.client_type,
@@ -408,8 +413,8 @@ class DualChatHub:
         }, room_code=session.room_code)
         await self._notify_admins('STATS_UPDATE', self.get_stats())
 
-    async def handle_private_message(self, session, target_user, content):
-        """Xử lý tin nhắn riêng tư (PRIVATE / Whisper) trong cùng phòng."""
+    async def handle_private_message(self, session, target_user, content, attachment=None):
+        """Xử lý tin nhắn riêng tư (PRIVATE / Whisper) có hỗ trợ đính kèm tệp / ảnh."""
         if not session.username:
             await self.send_to_session(session, MSG_ERROR, {
                 "message": "Bạn cần JOIN trước khi gửi tin nhắn riêng."
@@ -434,9 +439,9 @@ class DualChatHub:
         content = (content or '').strip()
         timestamp = datetime.now().strftime("%H:%M:%S")
 
-        if not target_user or not content:
+        if not target_user or (not content and not attachment):
             await self.send_to_session(session, MSG_ERROR, {
-                "message": "Tin nhắn riêng cần chỉ định người nhận và nội dung."
+                "message": "Tin nhắn riêng cần chỉ định người nhận và nội dung hoặc tệp."
             })
             return
 
@@ -463,7 +468,7 @@ class DualChatHub:
         self.total_messages += 1
 
         self.log(
-            f"🔒 [RIÊNG] [{session.room_code}] #{session.id} {session.username} -> #{target_session.id} {target_user}: {content}",
+            f"🔒 [RIÊNG] [{session.room_code}] #{session.id} {session.username} -> #{target_session.id} {target_user}: {content or '[File]'}",
             tag='PRIVATE'
         )
 
@@ -472,6 +477,7 @@ class DualChatHub:
             "from": session.username,
             "to": target_user,
             "content": content,
+            "attachment": attachment,
             "timestamp": timestamp,
             "is_sender": False,
             "sender_id": session.id,
@@ -485,6 +491,7 @@ class DualChatHub:
             "from": session.username,
             "to": target_user,
             "content": content,
+            "attachment": attachment,
             "timestamp": timestamp,
             "is_sender": True,
             "sender_id": session.id,
@@ -744,12 +751,14 @@ async def websocket_client_handler(request):
 
                 elif msg_type == MSG_MSG:
                     content = data.get('content')
-                    await hub.handle_chat_message(session, content)
+                    attachment = data.get('attachment')
+                    await hub.handle_chat_message(session, content, attachment=attachment)
 
                 elif msg_type == MSG_PRIVATE:
                     target_user = data.get('to')
                     content = data.get('content')
-                    await hub.handle_private_message(session, target_user, content)
+                    attachment = data.get('attachment')
+                    await hub.handle_private_message(session, target_user, content, attachment=attachment)
 
                 elif msg_type == MSG_QUIT:
                     await hub.remove_client(session, reason="Client chủ động thoát")
@@ -1153,6 +1162,76 @@ async def admin_page_handler(request):
     return web.Response(text="Admin page not found. Please ensure 'web/admin.html' exists.", status=404)
 
 
+async def api_upload_handler(request):
+    """
+    Xử lý tải lên tệp tin và hình ảnh phục vụ trò chuyện trực tuyến.
+    Hỗ trợ cả file ảnh (png, jpg, webp, gif...) và file tài liệu (pdf, doc, zip...).
+    """
+    try:
+        reader = await request.multipart()
+    except Exception as e:
+        return web.json_response({"status": "error", "message": f"Dữ liệu multipart không hợp lệ: {e}"}, status=400)
+
+    field = await reader.next()
+    if not field or field.name != 'file':
+        return web.json_response({"status": "error", "message": "Không tìm thấy trường 'file' trong yêu cầu."}, status=400)
+
+    raw_filename = field.filename or "tep_tin"
+    basename = os.path.basename(raw_filename)
+    name_root, ext = os.path.splitext(basename)
+    safe_root = re.sub(r'[^a-zA-Z0-9_\u00C0-\u024F\u1EA0-\u1EF9-]', '_', name_root)[:50]
+    safe_uid = uuid.uuid4().hex[:8]
+    stored_name = f"{safe_uid}_{safe_root}{ext}"
+
+    uploads_dir = os.path.join(BASE_DIR, 'data', 'uploads')
+    os.makedirs(uploads_dir, exist_ok=True)
+    file_path = os.path.join(uploads_dir, stored_name)
+
+    size = 0
+    MAX_FILE_SIZE = 50 * 1024 * 1024  # Giới hạn 50MB
+
+    try:
+        with open(file_path, 'wb') as f:
+            while True:
+                chunk = await field.read_chunk()
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > MAX_FILE_SIZE:
+                    f.close()
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                    return web.json_response({
+                        "status": "error",
+                        "message": "Kích thước tệp vượt quá giới hạn tối đa (50MB)."
+                    }, status=413)
+                f.write(chunk)
+    except Exception as e:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        return web.json_response({"status": "error", "message": f"Lỗi lưu trữ tệp: {e}"}, status=500)
+
+    image_exts = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico'}
+    is_image = ext.lower() in image_exts
+
+    if size < 1024:
+        size_str = f"{size} B"
+    elif size < 1024 * 1024:
+        size_str = f"{size / 1024:.1f} KB"
+    else:
+        size_str = f"{size / (1024 * 1024):.1f} MB"
+
+    return web.json_response({
+        "status": "success",
+        "url": f"/uploads/{stored_name}",
+        "name": basename,
+        "size": size,
+        "size_str": size_str,
+        "is_image": is_image,
+        "ext": ext.lower()
+    })
+
+
 def create_web_application(hub):
     """Khởi tạo ứng dụng aiohttp web."""
     @web.middleware
@@ -1163,12 +1242,15 @@ def create_web_application(hub):
         response.headers['Expires'] = '0'
         return response
 
-    app = web.Application(middlewares=[no_cache_middleware])
+    app = web.Application(middlewares=[no_cache_middleware], client_max_size=60 * 1024 * 1024)
     app['hub'] = hub
 
     # Routes WebSocket
     app.router.add_get('/ws', websocket_client_handler)
     app.router.add_get('/ws/admin', websocket_admin_handler)
+
+    # API Tải lên tệp tin & hình ảnh
+    app.router.add_post('/api/upload', api_upload_handler)
 
     # REST APIs: Auth (Zoom Style)
     app.router.add_post('/api/auth/register', api_auth_register_handler)
@@ -1193,6 +1275,11 @@ def create_web_application(hub):
     app.router.add_get('/room.html', room_handler)
     app.router.add_get('/admin', admin_page_handler)
     app.router.add_get('/admin.html', admin_page_handler)
+
+    # Phục vụ file đính kèm đã upload
+    uploads_dir = os.path.join(BASE_DIR, 'data', 'uploads')
+    os.makedirs(uploads_dir, exist_ok=True)
+    app.router.add_static('/uploads', path=uploads_dir, name='uploads', show_index=False)
 
     # Phục vụ tài nguyên tĩnh (css, js, assets)
     web_dir = os.path.join(BASE_DIR, 'web')
