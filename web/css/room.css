@@ -719,14 +719,31 @@ body.meet-in-call-body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 0;
+  padding: 8px 10px;
+  border-radius: 8px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  transition: all 0.15s ease;
+}
+
+.people-item-row.people-item-remote {
+  cursor: pointer;
+}
+
+.people-item-row.people-item-remote:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.people-item-row.people-item-active-chat {
+  background: rgba(138, 180, 248, 0.12);
+  border: 1px solid rgba(138, 180, 248, 0.28);
 }
 
 .people-info-left {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+  flex: 1;
 }
 
 .people-avatar-sm {
@@ -740,18 +757,64 @@ body.meet-in-call-body {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .people-name {
   font-size: 0.9rem;
   font-weight: 500;
   color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .people-role-tag {
   font-size: 0.75rem;
   color: var(--meet-blue);
   margin-left: 4px;
+}
+
+.people-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.btn-row-chat-private {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #8ab4f8;
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 4px 9px;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  opacity: 0.85;
+}
+
+.people-item-row:hover .btn-row-chat-private {
+  opacity: 1;
+  background: rgba(138, 180, 248, 0.18);
+  border-color: rgba(138, 180, 248, 0.35);
+}
+
+.btn-row-chat-private:hover {
+  background: #1a73e8 !important;
+  color: #fff !important;
+  border-color: #1a73e8 !important;
+  transform: translateY(-1px);
+}
+
+.mic-status-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* In-Call Messages Stream (Chat Tab) */
@@ -768,6 +831,28 @@ body.meet-in-call-body {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.chat-bubble-meet.chat-bubble-private {
+  background: rgba(138, 180, 248, 0.08);
+  border: 1px solid rgba(138, 180, 248, 0.24);
+  border-left: 3px solid #8ab4f8;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.badge-private-chat {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(234, 67, 53, 0.18);
+  color: #f28b82;
+  border: 1px solid rgba(234, 67, 53, 0.35);
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  margin-left: 6px;
 }
 
 .chat-meta-row {
@@ -848,6 +933,72 @@ body.meet-in-call-body {
 
 .btn-send-meet-chat:hover {
   background: #1765cc;
+}
+
+/* Thanh trạng thái đang nhắn tin riêng */
+.chat-target-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(138, 180, 248, 0.12);
+  border: 1px solid rgba(138, 180, 248, 0.3);
+  border-radius: 8px;
+  padding: 7px 12px;
+  margin-bottom: 8px;
+  font-size: 0.8rem;
+  animation: fadeIn 0.2s ease;
+}
+
+.chat-target-banner.hidden {
+  display: none;
+}
+
+.chat-target-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-target-lock-icon {
+  color: #8ab4f8;
+  display: flex;
+  align-items: center;
+}
+
+.chat-target-label {
+  color: #9aa0a6;
+  font-size: 0.75rem;
+}
+
+.chat-target-name {
+  color: #8ab4f8;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 150px;
+}
+
+.btn-cancel-private-chat {
+  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  color: #bdc1c6;
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.btn-cancel-private-chat:hover {
+  background: rgba(234, 67, 53, 0.2);
+  color: #ea4335;
 }
 
 /* Khung xem trước tệp/ảnh đính kèm trước khi gửi */

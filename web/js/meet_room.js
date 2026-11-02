@@ -42,6 +42,7 @@
     captionsEnabled: false,
     activeDrawer: null, // 'people' | 'chat' | 'host' | 'info' | null
     unreadChatCount: 0,
+    privateChatTarget: null, // { username, fullname, avatar_color }
     pendingAttachment: null,
     ws: null,
     pingInterval: null
@@ -126,6 +127,9 @@
     meetChatStream: document.getElementById('meetChatStream'),
     formMeetChat: document.getElementById('formMeetChat'),
     inputMeetChat: document.getElementById('inputMeetChat'),
+    chatTargetBanner: document.getElementById('chatTargetBanner'),
+    chatTargetName: document.getElementById('chatTargetName'),
+    btnCancelPrivateChat: document.getElementById('btnCancelPrivateChat'),
     chatFileInput: document.getElementById('chatFileInput'),
     btnAttachFile: document.getElementById('btnAttachFile'),
     chatAttachmentPreview: document.getElementById('chatAttachmentPreview'),
@@ -980,6 +984,11 @@
       }
     });
 
+    if (state.privateChatTarget && !state.participants.has(state.privateChatTarget.username)) {
+      showToast(`Thành viên ${state.privateChatTarget.fullname} đã rời phòng.`);
+      clearPrivateChatTarget();
+    }
+
     updateParticipantsUI();
     renderVideoGrid();
   }
@@ -1048,6 +1057,18 @@
     data.isPrivate = true;
     appendChatMessage(data);
     if (window.soundFX) window.soundFX.playReceived();
+
+    if (state.activeDrawer !== 'chat') {
+      state.unreadChatCount++;
+      DOM.badgeChatCount.textContent = state.unreadChatCount;
+      DOM.badgeChatCount.classList.remove('hidden');
+    }
+
+    if (!data.is_sender) {
+      const senderDisplay = data.from_fullname || data.fullname || data.from || 'Một thành viên';
+      const preview = data.content ? `: ${data.content}` : (data.attachment ? ': Đã gửi tệp đính kèm' : '');
+      showToast(`🔒 Tin nhắn riêng từ ${senderDisplay}${preview}`, 4000);
+    }
   }
 
   function handleIncomingSystemNotice(data) {
@@ -1318,11 +1339,13 @@
     // 1. Local user row
     const localUser = state.currentUser || { username: 'local', fullname: 'Bạn', avatar_color: '#1a73e8' };
     DOM.drawerPeopleList.appendChild(createPeopleItemRow({
+      username: localUser.username,
       fullname: `${localUser.fullname || localUser.username} (Bạn)`,
       avatar_color: localColorInfo.color,
       avatar_initial: localColorInfo.initial,
       is_host: state.isHost,
-      isMicOn: state.mediaState.mic
+      isMicOn: state.mediaState.mic,
+      isSelf: true
     }));
 
     // 2. Remote users rows
@@ -1332,37 +1355,106 @@
         color: '#34a853'
       };
       DOM.drawerPeopleList.appendChild(createPeopleItemRow({
-        fullname: u.fullname || u.username,
+        username: u.username || uname,
+        fullname: u.fullname || u.username || uname,
         avatar_color: remColorInfo.color,
         avatar_initial: remColorInfo.initial,
         is_host: u.is_host,
         type: u.type,
-        isMicOn: u.media_state ? u.media_state.mic : true
+        isMicOn: u.media_state ? u.media_state.mic : true,
+        isSelf: false
       }));
+    });
+  }
+
+  function startPrivateChat(user) {
+    if (!user || user.isSelf) return;
+    state.privateChatTarget = {
+      username: user.username,
+      fullname: user.fullname || user.username,
+      avatar_color: user.avatar_color
+    };
+    updatePrivateChatUI();
+    openDrawer('chat');
+    showToast(`🔒 Đang nhắn tin riêng với ${state.privateChatTarget.fullname}`, 2000);
+  }
+
+  function clearPrivateChatTarget() {
+    state.privateChatTarget = null;
+    updatePrivateChatUI();
+  }
+
+  function updatePrivateChatUI() {
+    if (state.privateChatTarget) {
+      if (DOM.chatTargetBanner) DOM.chatTargetBanner.classList.remove('hidden');
+      if (DOM.chatTargetName) DOM.chatTargetName.textContent = state.privateChatTarget.fullname;
+      if (DOM.inputMeetChat) {
+        DOM.inputMeetChat.placeholder = `Nhắn riêng cho ${state.privateChatTarget.fullname} (kèm file/ảnh)...`;
+        DOM.inputMeetChat.focus();
+      }
+    } else {
+      if (DOM.chatTargetBanner) DOM.chatTargetBanner.classList.add('hidden');
+      if (DOM.inputMeetChat) {
+        DOM.inputMeetChat.placeholder = 'Gửi tin nhắn hoặc dán ảnh (Ctrl+V)...';
+      }
+    }
+
+    // Cập nhật class active cho danh sách người tham gia
+    document.querySelectorAll('.people-item-row').forEach(row => {
+      const u = row.getAttribute('data-username');
+      if (u && state.privateChatTarget && u === state.privateChatTarget.username) {
+        row.classList.add('people-item-active-chat');
+      } else {
+        row.classList.remove('people-item-active-chat');
+      }
     });
   }
 
   function createPeopleItemRow(item) {
     const row = document.createElement('div');
-    row.className = 'people-item-row';
+    row.className = 'people-item-row' + (item.isSelf ? ' people-item-self' : ' people-item-remote');
+    if (item.username) row.setAttribute('data-username', item.username);
+    if (!item.isSelf && state.privateChatTarget && state.privateChatTarget.username === item.username) {
+      row.classList.add('people-item-active-chat');
+    }
+
     const initial = item.avatar_initial || getInitials(item.fullname);
     const micIcon = item.isMicOn
       ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>`
       : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ea4335" stroke-width="2"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"></path><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>`;
+
+    let rightActions = `<div class="people-actions-right">`;
+    if (!item.isSelf) {
+      rightActions += `
+        <button type="button" class="btn-row-chat-private" title="Nhắn tin riêng cho ${escapeHtml(item.fullname)}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+          <span>Nhắn tin</span>
+        </button>
+      `;
+    }
+    rightActions += `<div class="mic-status-icon">${micIcon}</div></div>`;
 
     row.innerHTML = `
       <div class="people-info-left">
         <div class="people-avatar-sm" style="background-color: ${item.avatar_color || '#1a73e8'};">
           ${initial}
         </div>
-        <div>
-          <span class="people-name">${item.fullname}</span>
+        <div style="min-width: 0; flex: 1;">
+          <span class="people-name">${escapeHtml(item.fullname)}</span>
           ${item.is_host ? '<span class="people-role-tag">(Chủ trì)</span>' : ''}
           ${item.type === 'tcp' ? '<span style="font-size: 0.7rem; color: #a855f7; margin-left: 4px;">[TCP]</span>' : ''}
         </div>
       </div>
-      <div>${micIcon}</div>
+      ${rightActions}
     `;
+
+    if (!item.isSelf) {
+      row.title = `Nhấn để nhắn tin riêng cho ${item.fullname}`;
+      row.addEventListener('click', () => {
+        startPrivateChat(item);
+      });
+    }
+
     return row;
   }
 
@@ -1453,14 +1545,30 @@
     bubble.className = 'chat-bubble-meet';
 
     const time = data.timestamp || formatTime();
-    const isMe = data.username === (state.currentUser && state.currentUser.username);
-    const author = isMe ? 'Bạn' : (data.fullname || data.username);
-    const authorColor = data.avatar_color || (isMe ? '#8ab4f8' : '#81c995');
+    let author = '';
+    let authorColor = '#81c995';
+
+    if (data.isPrivate) {
+      bubble.classList.add('chat-bubble-private');
+      if (data.is_sender) {
+        const targetDisplay = data.to_fullname || (state.participants.get(data.to) ? (state.participants.get(data.to).fullname || state.participants.get(data.to).username) : data.to);
+        author = `Bạn ➔ ${targetDisplay}`;
+        authorColor = '#8ab4f8';
+      } else {
+        const senderDisplay = data.from_fullname || data.fullname || (state.participants.get(data.from) ? (state.participants.get(data.from).fullname || state.participants.get(data.from).username) : (data.from || data.username));
+        author = `${senderDisplay} ➔ Bạn`;
+        authorColor = '#c58af9';
+      }
+    } else {
+      const isMe = data.username === (state.currentUser && state.currentUser.username);
+      author = isMe ? 'Bạn' : (data.fullname || data.username);
+      authorColor = data.avatar_color || (isMe ? '#8ab4f8' : '#81c995');
+    }
 
     let badge = '';
     if (data.is_host) badge = '<span style="color: #fbbc04; font-size: 0.7rem; margin-left: 4px;">👑 Host</span>';
     if (data.client_type === 'tcp') badge += '<span style="color: #c084fc; font-size: 0.7rem; margin-left: 4px;">💻 TCP</span>';
-    if (data.isPrivate) badge += '<span style="color: #ea4335; font-size: 0.7rem; margin-left: 4px;">🔒 Riêng tư</span>';
+    if (data.isPrivate) badge += '<span class="badge-private-chat">🔒 Riêng tư</span>';
 
     let attachmentHtml = '';
     if (data.attachment) {
@@ -1591,6 +1699,19 @@
         }));
         return;
       }
+    }
+
+    // Direct private chat recipient
+    if (state.privateChatTarget && state.privateChatTarget.username) {
+      state.ws.send(JSON.stringify({
+        type: 'PRIVATE',
+        data: {
+          to: state.privateChatTarget.username,
+          content: text,
+          attachment: attachmentPayload
+        }
+      }));
+      return;
     }
 
     state.ws.send(JSON.stringify({
@@ -1785,6 +1906,13 @@
 
     if (DOM.btnRemoveAttachment) {
       DOM.btnRemoveAttachment.addEventListener('click', clearPendingAttachment);
+    }
+
+    if (DOM.btnCancelPrivateChat) {
+      DOM.btnCancelPrivateChat.addEventListener('click', (e) => {
+        e.stopPropagation();
+        clearPrivateChatTarget();
+      });
     }
 
     // Lightbox modal close events

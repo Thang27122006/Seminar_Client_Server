@@ -454,9 +454,10 @@ class DualChatHub:
         # Tìm người nhận trong CÙNG phòng
         target_session = None
         for s in self.clients.values():
-            if s.is_active and s.username == target_user and getattr(s, 'room_code', '') == session.room_code:
-                target_session = s
-                break
+            if s.is_active and getattr(s, 'room_code', '') == session.room_code:
+                if s.username == target_user or s.username.lower() == target_user.lower() or (getattr(s, 'fullname', '') and s.fullname.lower() == target_user.lower()):
+                    target_session = s
+                    break
 
         if not target_session:
             await self.send_to_session(session, MSG_ERROR, {
@@ -467,15 +468,22 @@ class DualChatHub:
         session.msg_count += 1
         self.total_messages += 1
 
+        sender_fullname = getattr(session, 'fullname', '') or session.username
+        target_fullname = getattr(target_session, 'fullname', '') or target_session.username
+
         self.log(
-            f"🔒 [RIÊNG] [{session.room_code}] #{session.id} {session.username} -> #{target_session.id} {target_user}: {content or '[File]'}",
+            f"🔒 [RIÊNG] [{session.room_code}] #{session.id} {session.username} ({sender_fullname}) -> #{target_session.id} {target_session.username} ({target_fullname}): {content or '[File]'}",
             tag='PRIVATE'
         )
 
         # Gửi cho người nhận
         dm_target = {
             "from": session.username,
-            "to": target_user,
+            "to": target_session.username,
+            "from_fullname": sender_fullname,
+            "to_fullname": target_fullname,
+            "fullname": sender_fullname,
+            "avatar_color": getattr(session, 'avatar_color', None),
             "content": content,
             "attachment": attachment,
             "timestamp": timestamp,
@@ -489,7 +497,11 @@ class DualChatHub:
         # Gửi lại người gửi để xác nhận (Hiển thị bong bóng bên mình)
         dm_sender = {
             "from": session.username,
-            "to": target_user,
+            "to": target_session.username,
+            "from_fullname": sender_fullname,
+            "to_fullname": target_fullname,
+            "fullname": sender_fullname,
+            "avatar_color": getattr(session, 'avatar_color', None),
             "content": content,
             "attachment": attachment,
             "timestamp": timestamp,
