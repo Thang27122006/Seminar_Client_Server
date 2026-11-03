@@ -1,4 +1,6 @@
 import sys
+import os
+
 if sys.platform == 'win32' and hasattr(sys.stdout, 'reconfigure'):
     try:
         sys.stdout.reconfigure(encoding='utf-8')
@@ -6,12 +8,15 @@ if sys.platform == 'win32' and hasattr(sys.stdout, 'reconfigure'):
     except Exception:
         pass
 
-from client.gui import ChatGUI
-
 
 def main():
-    app = ChatGUI()
-    app.run()
+    if '--classic' in sys.argv or '--tkinter' in sys.argv:
+        from client.gui import ChatGUI
+        app = ChatGUI()
+        app.run()
+    else:
+        from client.desktop_app import main as desktop_main
+        desktop_main()
 
 
 if __name__ == '__main__':

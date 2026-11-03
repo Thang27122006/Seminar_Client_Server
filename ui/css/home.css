@@ -183,6 +183,94 @@ body.meet-home-body {
   border-color: var(--gm-blue-dark);
 }
 
+.btn-gr-auth {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 18px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-family: var(--google-sans);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-gr-auth-login {
+  background: transparent;
+  border: 1px solid var(--gm-border);
+  color: var(--gm-text-primary);
+}
+
+.btn-gr-auth-login:hover {
+  background: var(--gm-surface-hover);
+  border-color: var(--gm-text-secondary);
+}
+
+.btn-gr-auth-register {
+  background: var(--gm-blue);
+  border: 1px solid var(--gm-blue);
+  color: #ffffff;
+}
+
+.btn-gr-auth-register:hover {
+  background: var(--gm-blue-hover);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.user-profile-pill {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--gm-surface);
+  border: 1px solid var(--gm-border);
+  padding: 4px 14px 4px 6px;
+  border-radius: 24px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.user-profile-pill:hover {
+  background: var(--gm-surface-hover);
+  border-color: var(--gm-blue-dark);
+}
+
+.user-avatar-circle {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: #ffffff;
+}
+
+.user-name-text {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--gm-text-primary);
+  max-width: 140px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn-icon-xs {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border-radius: 50%;
+  transition: opacity 0.2s;
+}
+
+.btn-icon-xs:hover {
+  color: #f28b82 !important;
+}
+
 /* ─────────────────────────────────────────────────────────────────
    2. HERO SECTION (GOOGLE MEET MAIN HERO SPLIT)
    ───────────────────────────────────────────────────────────────── */

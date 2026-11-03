@@ -56,7 +56,6 @@ class NetSphereHome {
     this.meetingDropdown = document.getElementById('meetingDropdown');
     this.optCreateForLater = document.getElementById('optCreateForLater');
     this.optStartInstant = document.getElementById('optStartInstant');
-    this.optOpenHostStudio = document.getElementById('optOpenHostStudio');
 
     // Input Code & Join
     this.inputMeetCode = document.getElementById('inputMeetCode');
@@ -154,8 +153,8 @@ class NetSphereHome {
       });
     } else {
       this.userAuthContainer.innerHTML = `
-        <button class="btn-ghost" id="btnOpenLogin">Đăng Nhập</button>
-        <button class="btn-primary-gradient" id="btnOpenRegister">Đăng Ký Miễn Phí</button>
+        <button class="btn-gr-auth btn-gr-auth-login" id="btnOpenLogin">Đăng nhập</button>
+        <button class="btn-gr-auth btn-gr-auth-register" id="btnOpenRegister">Đăng ký</button>
       `;
 
       document.getElementById('btnOpenLogin')?.addEventListener('click', () => {
@@ -195,24 +194,19 @@ class NetSphereHome {
     });
 
     // Tùy chọn 1: Tạo cuộc họp để dùng sau (Get link to share)
-    this.optCreateForLater?.addEventListener('click', () => {
+    this.optCreateForLater?.addEventListener('click', (e) => {
+      e.stopPropagation();
       this.meetingDropdown?.classList.remove('show');
       this.meetingDropdown?.classList.add('force-hidden');
       this.handleCreateRoom(false);
     });
 
     // Tùy chọn 2: Bắt đầu cuộc họp tức thì
-    this.optStartInstant?.addEventListener('click', () => {
+    this.optStartInstant?.addEventListener('click', (e) => {
+      e.stopPropagation();
       this.meetingDropdown?.classList.remove('show');
       this.meetingDropdown?.classList.add('force-hidden');
       this.handleCreateRoom(true);
-    });
-
-    // Tùy chọn 3: Mở Host Studio
-    this.optOpenHostStudio?.addEventListener('click', () => {
-      this.meetingDropdown?.classList.remove('show');
-      this.meetingDropdown?.classList.add('force-hidden');
-      this.handleCreateRoom(false, true);
     });
 
     // Lắng nghe gõ mã cuộc họp
@@ -346,7 +340,7 @@ class NetSphereHome {
     window.location.href = `/room?code=${encodeURIComponent(code)}`;
   }
 
-  async handleCreateRoom(instant = false, asHostStudio = false) {
+  async handleCreateRoom(instant = false) {
     const user = window.authManager?.getUser();
     const token = window.authManager?.getToken();
 
@@ -373,9 +367,6 @@ class NetSphereHome {
         if (instant) {
           // Bắt đầu ngay: vào thẳng phòng họp
           window.location.href = `/room?code=${roomCode}`;
-        } else if (asHostStudio) {
-          // Mở Host Studio
-          window.location.href = `/admin?room=${roomCode}`;
         } else {
           // Hiển thị modal sao chép liên kết để dùng sau
           if (this.inputReadyLink) {

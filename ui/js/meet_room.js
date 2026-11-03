@@ -42,6 +42,8 @@
     captionsEnabled: false,
     activeDrawer: null, // 'people' | 'chat' | 'host' | 'info' | null
     unreadChatCount: 0,
+    privateChatTarget: null, // { username, fullname, avatar_color }
+    pendingAttachment: null,
     ws: null,
     pingInterval: null
   };
@@ -62,12 +64,41 @@
     grIconCamOn: document.getElementById('grIconCamOn'),
     grIconCamOff: document.getElementById('grIconCamOff'),
     grLiveClock: document.getElementById('grLiveClock'),
+    grAccountChip: document.getElementById('grAccountChip'),
     grChipAvatar: document.getElementById('grChipAvatar'),
     grChipName: document.getElementById('grChipName'),
+    btnGrLogout: document.getElementById('btnGrLogout'),
+    grAuthButtons: document.getElementById('grAuthButtons'),
+    btnGrOpenLogin: document.getElementById('btnGrOpenLogin'),
+    btnGrOpenRegister: document.getElementById('btnGrOpenRegister'),
+    grAuthStatusNotice: document.getElementById('grAuthStatusNotice'),
+    grAuthStatusText: document.getElementById('grAuthStatusText'),
+    grAuthActionLinks: document.getElementById('grAuthActionLinks'),
+    linkGrLogin: document.getElementById('linkGrLogin'),
+    linkGrRegister: document.getElementById('linkGrRegister'),
     grRoomSummaryText: document.getElementById('grRoomSummaryText'),
     grInputUsername: document.getElementById('grInputUsername'),
     btnGrJoinNow: document.getElementById('btnGrJoinNow'),
     btnGrPresent: document.getElementById('btnGrPresent'),
+
+    // Modal Auth (Đăng nhập / Đăng ký)
+    modalAuth: document.getElementById('modalAuth'),
+    btnCloseAuth: document.getElementById('btnCloseAuth'),
+    tabLogin: document.getElementById('tabLogin'),
+    tabRegister: document.getElementById('tabRegister'),
+    formLogin: document.getElementById('formLogin'),
+    formRegister: document.getElementById('formRegister'),
+    loginUsername: document.getElementById('loginUsername'),
+    loginPassword: document.getElementById('loginPassword'),
+    loginAlert: document.getElementById('loginAlert'),
+    btnSubmitLogin: document.getElementById('btnSubmitLogin'),
+    regFullname: document.getElementById('regFullname'),
+    regUsername: document.getElementById('regUsername'),
+    regEmail: document.getElementById('regEmail'),
+    regPassword: document.getElementById('regPassword'),
+    regConfirmPassword: document.getElementById('regConfirmPassword'),
+    registerAlert: document.getElementById('registerAlert'),
+    btnSubmitRegister: document.getElementById('btnSubmitRegister'),
 
     // Main Stage
     meetMainStage: document.getElementById('meetMainStage'),
@@ -125,6 +156,22 @@
     meetChatStream: document.getElementById('meetChatStream'),
     formMeetChat: document.getElementById('formMeetChat'),
     inputMeetChat: document.getElementById('inputMeetChat'),
+    chatTargetBanner: document.getElementById('chatTargetBanner'),
+    chatTargetName: document.getElementById('chatTargetName'),
+    btnCancelPrivateChat: document.getElementById('btnCancelPrivateChat'),
+    chatFileInput: document.getElementById('chatFileInput'),
+    btnAttachFile: document.getElementById('btnAttachFile'),
+    chatAttachmentPreview: document.getElementById('chatAttachmentPreview'),
+    previewThumbBox: document.getElementById('previewThumbBox'),
+    previewFileName: document.getElementById('previewFileName'),
+    previewFileSize: document.getElementById('previewFileSize'),
+    btnRemoveAttachment: document.getElementById('btnRemoveAttachment'),
+    imageLightboxModal: document.getElementById('imageLightboxModal'),
+    lightboxOverlay: document.getElementById('lightboxOverlay'),
+    lightboxImage: document.getElementById('lightboxImage'),
+    lightboxCaption: document.getElementById('lightboxCaption'),
+    lightboxDownloadBtn: document.getElementById('lightboxDownloadBtn'),
+    btnLightboxClose: document.getElementById('btnLightboxClose'),
     drawerMeetingUrl: document.getElementById('drawerMeetingUrl'),
     btnDrawerCopyLink: document.getElementById('btnDrawerCopyLink'),
 
@@ -829,7 +876,7 @@
   // ─────────────────────────────────────────────────────────────────
   function connectWebSocket(username) {
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const token = (window.Auth && window.Auth.getToken()) || '';
+    const token = (window.authManager && window.authManager.getToken()) || '';
     const wsUrl = `${protocol}//${location.host}/ws?room=${encodeURIComponent(state.roomCode)}&token=${encodeURIComponent(token)}`;
 
     state.ws = new WebSocket(wsUrl);
@@ -966,6 +1013,11 @@
       }
     });
 
+    if (state.privateChatTarget && !state.participants.has(state.privateChatTarget.username)) {
+      showToast(`Thành viên ${state.privateChatTarget.fullname} đã rời phòng.`);
+      clearPrivateChatTarget();
+    }
+
     updateParticipantsUI();
     renderVideoGrid();
   }
@@ -1034,6 +1086,18 @@
     data.isPrivate = true;
     appendChatMessage(data);
     if (window.soundFX) window.soundFX.playReceived();
+
+    if (state.activeDrawer !== 'chat') {
+      state.unreadChatCount++;
+      DOM.badgeChatCount.textContent = state.unreadChatCount;
+      DOM.badgeChatCount.classList.remove('hidden');
+    }
+
+    if (!data.is_sender) {
+      const senderDisplay = data.from_fullname || data.fullname || data.from || 'Một thành viên';
+      const preview = data.content ? `: ${data.content}` : (data.attachment ? ': Đã gửi tệp đính kèm' : '');
+      showToast(`🔒 Tin nhắn riêng từ ${senderDisplay}${preview}`, 4000);
+    }
   }
 
   function handleIncomingSystemNotice(data) {
@@ -1304,11 +1368,13 @@
     // 1. Local user row
     const localUser = state.currentUser || { username: 'local', fullname: 'Bạn', avatar_color: '#1a73e8' };
     DOM.drawerPeopleList.appendChild(createPeopleItemRow({
+      username: localUser.username,
       fullname: `${localUser.fullname || localUser.username} (Bạn)`,
       avatar_color: localColorInfo.color,
       avatar_initial: localColorInfo.initial,
       is_host: state.isHost,
-      isMicOn: state.mediaState.mic
+      isMicOn: state.mediaState.mic,
+      isSelf: true
     }));
 
     // 2. Remote users rows
@@ -1318,38 +1384,185 @@
         color: '#34a853'
       };
       DOM.drawerPeopleList.appendChild(createPeopleItemRow({
-        fullname: u.fullname || u.username,
+        username: u.username || uname,
+        fullname: u.fullname || u.username || uname,
         avatar_color: remColorInfo.color,
         avatar_initial: remColorInfo.initial,
         is_host: u.is_host,
         type: u.type,
-        isMicOn: u.media_state ? u.media_state.mic : true
+        isMicOn: u.media_state ? u.media_state.mic : true,
+        isSelf: false
       }));
+    });
+  }
+
+  function startPrivateChat(user) {
+    if (!user || user.isSelf) return;
+    state.privateChatTarget = {
+      username: user.username,
+      fullname: user.fullname || user.username,
+      avatar_color: user.avatar_color
+    };
+    updatePrivateChatUI();
+    openDrawer('chat');
+    showToast(`🔒 Đang nhắn tin riêng với ${state.privateChatTarget.fullname}`, 2000);
+  }
+
+  function clearPrivateChatTarget() {
+    state.privateChatTarget = null;
+    updatePrivateChatUI();
+  }
+
+  function updatePrivateChatUI() {
+    if (state.privateChatTarget) {
+      if (DOM.chatTargetBanner) DOM.chatTargetBanner.classList.remove('hidden');
+      if (DOM.chatTargetName) DOM.chatTargetName.textContent = state.privateChatTarget.fullname;
+      if (DOM.inputMeetChat) {
+        DOM.inputMeetChat.placeholder = `Nhắn riêng cho ${state.privateChatTarget.fullname} (kèm file/ảnh)...`;
+        DOM.inputMeetChat.focus();
+      }
+    } else {
+      if (DOM.chatTargetBanner) DOM.chatTargetBanner.classList.add('hidden');
+      if (DOM.inputMeetChat) {
+        DOM.inputMeetChat.placeholder = 'Gửi tin nhắn hoặc dán ảnh (Ctrl+V)...';
+      }
+    }
+
+    // Cập nhật class active cho danh sách người tham gia
+    document.querySelectorAll('.people-item-row').forEach(row => {
+      const u = row.getAttribute('data-username');
+      if (u && state.privateChatTarget && u === state.privateChatTarget.username) {
+        row.classList.add('people-item-active-chat');
+      } else {
+        row.classList.remove('people-item-active-chat');
+      }
     });
   }
 
   function createPeopleItemRow(item) {
     const row = document.createElement('div');
-    row.className = 'people-item-row';
+    row.className = 'people-item-row' + (item.isSelf ? ' people-item-self' : ' people-item-remote');
+    if (item.username) row.setAttribute('data-username', item.username);
+    if (!item.isSelf && state.privateChatTarget && state.privateChatTarget.username === item.username) {
+      row.classList.add('people-item-active-chat');
+    }
+
     const initial = item.avatar_initial || getInitials(item.fullname);
     const micIcon = item.isMicOn
       ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>`
       : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ea4335" stroke-width="2"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"></path><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>`;
+
+    let rightActions = `<div class="people-actions-right">`;
+    if (!item.isSelf) {
+      rightActions += `
+        <button type="button" class="btn-row-chat-private" title="Nhắn tin riêng cho ${escapeHtml(item.fullname)}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+          <span>Nhắn tin</span>
+        </button>
+      `;
+    }
+    rightActions += `<div class="mic-status-icon">${micIcon}</div></div>`;
 
     row.innerHTML = `
       <div class="people-info-left">
         <div class="people-avatar-sm" style="background-color: ${item.avatar_color || '#1a73e8'};">
           ${initial}
         </div>
-        <div>
-          <span class="people-name">${item.fullname}</span>
+        <div style="min-width: 0; flex: 1;">
+          <span class="people-name">${escapeHtml(item.fullname)}</span>
           ${item.is_host ? '<span class="people-role-tag">(Chủ trì)</span>' : ''}
           ${item.type === 'tcp' ? '<span style="font-size: 0.7rem; color: #a855f7; margin-left: 4px;">[TCP]</span>' : ''}
         </div>
       </div>
-      <div>${micIcon}</div>
+      ${rightActions}
     `;
+
+    if (!item.isSelf) {
+      row.title = `Nhấn để nhắn tin riêng cho ${item.fullname}`;
+      row.addEventListener('click', () => {
+        startPrivateChat(item);
+      });
+    }
+
     return row;
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // IMAGE LIGHTBOX & FILE ATTACHMENTS
+  // ─────────────────────────────────────────────────────────────────
+  function openImageLightbox(url, name) {
+    if (!DOM.imageLightboxModal) return;
+    DOM.lightboxImage.src = url;
+    DOM.lightboxCaption.textContent = name || 'Hình ảnh';
+    DOM.lightboxDownloadBtn.href = url;
+    DOM.lightboxDownloadBtn.download = name || 'image.png';
+    DOM.imageLightboxModal.classList.remove('hidden');
+  }
+  window.openImageLightbox = openImageLightbox;
+
+  function closeImageLightbox() {
+    if (!DOM.imageLightboxModal) return;
+    DOM.imageLightboxModal.classList.add('hidden');
+    DOM.lightboxImage.src = '';
+  }
+
+  function setPendingAttachment(file) {
+    if (!file) return;
+    const MAX_SIZE = 50 * 1024 * 1024;
+    if (file.size > MAX_SIZE) {
+      showToast('⚠️ Kích thước tệp vượt quá giới hạn tối đa (50MB)');
+      return;
+    }
+
+    const isImage = file.type.startsWith('image/');
+    state.pendingAttachment = {
+      file: file,
+      name: file.name,
+      size: file.size,
+      is_image: isImage
+    };
+
+    if (DOM.previewFileName) DOM.previewFileName.textContent = file.name;
+    if (DOM.previewFileSize) {
+      let sizeStr = '';
+      if (file.size < 1024) sizeStr = `${file.size} B`;
+      else if (file.size < 1024 * 1024) sizeStr = `${(file.size / 1024).toFixed(1)} KB`;
+      else sizeStr = `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
+      DOM.previewFileSize.textContent = sizeStr;
+    }
+
+    if (DOM.previewThumbBox) {
+      DOM.previewThumbBox.innerHTML = '';
+      if (isImage) {
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(file);
+        DOM.previewThumbBox.appendChild(img);
+      } else {
+        DOM.previewThumbBox.innerHTML = `
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8ab4f8" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+        `;
+      }
+    }
+
+    if (DOM.chatAttachmentPreview) {
+      DOM.chatAttachmentPreview.classList.remove('hidden');
+    }
+    if (DOM.inputMeetChat) {
+      DOM.inputMeetChat.focus();
+    }
+  }
+
+  function clearPendingAttachment() {
+    state.pendingAttachment = null;
+    if (DOM.chatAttachmentPreview) {
+      DOM.chatAttachmentPreview.classList.add('hidden');
+    }
+    if (DOM.chatFileInput) {
+      DOM.chatFileInput.value = '';
+    }
+    if (DOM.previewThumbBox) {
+      DOM.previewThumbBox.innerHTML = '';
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────
@@ -1361,14 +1574,72 @@
     bubble.className = 'chat-bubble-meet';
 
     const time = data.timestamp || formatTime();
-    const isMe = data.username === (state.currentUser && state.currentUser.username);
-    const author = isMe ? 'Bạn' : (data.fullname || data.username);
-    const authorColor = data.avatar_color || (isMe ? '#8ab4f8' : '#81c995');
+    let author = '';
+    let authorColor = '#81c995';
+
+    if (data.isPrivate) {
+      bubble.classList.add('chat-bubble-private');
+      if (data.is_sender) {
+        const targetDisplay = data.to_fullname || (state.participants.get(data.to) ? (state.participants.get(data.to).fullname || state.participants.get(data.to).username) : data.to);
+        author = `Bạn ➔ ${targetDisplay}`;
+        authorColor = '#8ab4f8';
+      } else {
+        const senderDisplay = data.from_fullname || data.fullname || (state.participants.get(data.from) ? (state.participants.get(data.from).fullname || state.participants.get(data.from).username) : (data.from || data.username));
+        author = `${senderDisplay} ➔ Bạn`;
+        authorColor = '#c58af9';
+      }
+    } else {
+      const isMe = data.username === (state.currentUser && state.currentUser.username);
+      author = isMe ? 'Bạn' : (data.fullname || data.username);
+      authorColor = data.avatar_color || (isMe ? '#8ab4f8' : '#81c995');
+    }
 
     let badge = '';
     if (data.is_host) badge = '<span style="color: #fbbc04; font-size: 0.7rem; margin-left: 4px;">👑 Host</span>';
     if (data.client_type === 'tcp') badge += '<span style="color: #c084fc; font-size: 0.7rem; margin-left: 4px;">💻 TCP</span>';
-    if (data.isPrivate) badge += '<span style="color: #ea4335; font-size: 0.7rem; margin-left: 4px;">🔒 Riêng tư</span>';
+    if (data.isPrivate) badge += '<span class="badge-private-chat">🔒 Riêng tư</span>';
+
+    let attachmentHtml = '';
+    if (data.attachment) {
+      const att = data.attachment;
+      if (att.is_image) {
+        attachmentHtml = `
+          <div class="chat-attachment-image">
+            <img src="${escapeHtml(att.url)}" alt="${escapeHtml(att.name)}" class="chat-img-elem" loading="lazy" onclick="window.openImageLightbox('${escapeHtml(att.url)}', '${escapeHtml(att.name)}')">
+            <div class="chat-image-footer">
+              <span class="chat-image-name" title="${escapeHtml(att.name)}">${escapeHtml(att.name)}</span>
+              <span class="chat-file-size">${escapeHtml(att.size_str || '')}</span>
+              <a href="${escapeHtml(att.url)}" download="${escapeHtml(att.name)}" class="chat-img-download-btn" title="Tải ảnh về máy">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              </a>
+            </div>
+          </div>
+        `;
+      } else {
+        const ext = (att.ext || '').toLowerCase();
+        let iconClass = 'icon-doc';
+        if (ext === '.pdf') iconClass = 'icon-pdf';
+        else if (['.xls', '.xlsx', '.csv'].includes(ext)) iconClass = 'icon-sheet';
+        else if (['.zip', '.rar', '.7z', '.tar', '.gz'].includes(ext)) iconClass = 'icon-zip';
+
+        attachmentHtml = `
+          <div class="chat-attachment-file">
+            <div class="file-icon-box ${iconClass}">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+            </div>
+            <div class="file-info-col">
+              <div class="file-name-text" title="${escapeHtml(att.name)}">${escapeHtml(att.name)}</div>
+              <div class="file-meta-sub">${escapeHtml(att.size_str || '')}</div>
+            </div>
+            <a href="${escapeHtml(att.url)}" download="${escapeHtml(att.name)}" class="btn-file-download" title="Tải xuống tệp">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            </a>
+          </div>
+        `;
+      }
+    }
+
+    const contentHtml = data.content ? `<div class="chat-message-text">${escapeHtml(data.content)}</div>` : '';
 
     bubble.innerHTML = `
       <div class="chat-meta-row">
@@ -1376,7 +1647,8 @@
         ${badge}
         <span>${time}</span>
       </div>
-      <div class="chat-message-text">${escapeHtml(data.content || '')}</div>
+      ${attachmentHtml}
+      ${contentHtml}
     `;
 
     DOM.meetChatStream.appendChild(bubble);
@@ -1401,27 +1673,79 @@
     return div.innerHTML;
   }
 
-  function sendChatMessage(text) {
+  async function sendChatMessage(text) {
     text = (text || '').trim();
-    if (!text || !state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+    const hasAttachment = Boolean(state.pendingAttachment);
+
+    if (!text && !hasAttachment) return;
+    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
+      showToast('⚠️ Không có kết nối tới máy chủ');
+      return;
+    }
+
+    let attachmentPayload = null;
+
+    if (hasAttachment) {
+      const fileToUpload = state.pendingAttachment.file;
+      showToast(`Đang tải lên "${fileToUpload.name}"... ⏳`, 3000);
+      try {
+        const formData = new FormData();
+        formData.append('file', fileToUpload);
+        const resp = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData
+        });
+        const uploadResult = await resp.json();
+        if (uploadResult.status === 'success') {
+          attachmentPayload = {
+            url: uploadResult.url,
+            name: uploadResult.name,
+            size: uploadResult.size,
+            size_str: uploadResult.size_str,
+            is_image: uploadResult.is_image,
+            ext: uploadResult.ext
+          };
+          clearPendingAttachment();
+        } else {
+          showToast(`❌ Tải tệp thất bại: ${uploadResult.message || 'Lỗi không xác định'}`);
+          return;
+        }
+      } catch (err) {
+        showToast(`❌ Lỗi kết nối khi tải tệp: ${err.message}`);
+        return;
+      }
+    }
 
     // Check whisper command e.g. /w user message
     if (text.startsWith('/w ') || text.startsWith('/whisper ')) {
       const parts = text.split(/\s+/);
-      if (parts.length >= 3) {
+      if (parts.length >= 2) {
         const target = parts[1];
         const content = parts.slice(2).join(' ');
         state.ws.send(JSON.stringify({
           type: 'PRIVATE',
-          data: { to: target, content: content }
+          data: { to: target, content: content, attachment: attachmentPayload }
         }));
         return;
       }
     }
 
+    // Direct private chat recipient
+    if (state.privateChatTarget && state.privateChatTarget.username) {
+      state.ws.send(JSON.stringify({
+        type: 'PRIVATE',
+        data: {
+          to: state.privateChatTarget.username,
+          content: text,
+          attachment: attachmentPayload
+        }
+      }));
+      return;
+    }
+
     state.ws.send(JSON.stringify({
       type: 'MSG',
-      data: { content: text }
+      data: { content: text, attachment: attachmentPayload }
     }));
   }
 
@@ -1430,22 +1754,31 @@
   // ─────────────────────────────────────────────────────────────────
   async function joinMeeting(withScreen = false) {
     let name = '';
-    if (state.currentUser && state.currentUser.fullname) {
-      name = state.currentUser.fullname;
+    let username = '';
+
+    if (state.currentUser && state.currentUser.username) {
+      username = state.currentUser.username;
+      name = DOM.grInputUsername?.value?.trim() || state.currentUser.fullname || username;
     } else if (DOM.grInputUsername && DOM.grInputUsername.value.trim()) {
       name = DOM.grInputUsername.value.trim();
+      username = name.toLowerCase().replace(/\s+/g, '_');
     } else {
       name = `Khách_${Math.floor(1000 + Math.random() * 9000)}`;
+      username = name;
     }
 
     if (!state.currentUser) {
       state.currentUser = {
-        username: name,
+        username: username,
         fullname: name,
-        avatar_color: '#1a73e8'
+        avatar_color: state.avatarColor || '#1a73e8'
       };
+    } else {
+      state.currentUser.fullname = name;
     }
 
+    state.username = username;
+    state.fullname = name;
     state.isJoined = true;
 
     // Switch UI from Green Room to Main Stage
@@ -1504,11 +1837,41 @@
       DOM.grInputUsername.addEventListener('input', () => {
         const val = DOM.grInputUsername.value.trim();
         const initial = getInitials(val || 'Khách');
-        if (DOM.grChipAvatar) DOM.grChipAvatar.textContent = initial;
-        if (DOM.grAvatarCircle) DOM.grAvatarCircle.textContent = initial;
-        if (DOM.grChipName) DOM.grChipName.textContent = val || 'Khách';
+        if (!state.currentUser) {
+          if (DOM.grChipAvatar) DOM.grChipAvatar.textContent = initial;
+          if (DOM.grAvatarCircle) DOM.grAvatarCircle.textContent = initial;
+          if (DOM.grChipName) DOM.grChipName.textContent = val || 'Khách';
+        }
       });
     }
+
+    // Auth Listeners (Đăng nhập / Đăng ký / Đăng xuất)
+    if (DOM.btnGrOpenLogin) DOM.btnGrOpenLogin.addEventListener('click', () => openAuthModal('login'));
+    if (DOM.btnGrOpenRegister) DOM.btnGrOpenRegister.addEventListener('click', () => openAuthModal('register'));
+    if (DOM.grAccountChip) {
+      DOM.grAccountChip.addEventListener('click', (e) => {
+        if (e.target === DOM.btnGrLogout || DOM.btnGrLogout?.contains(e.target)) return;
+        if (!window.authManager?.getUser()) {
+          openAuthModal('login');
+        }
+      });
+    }
+    if (DOM.btnGrLogout) {
+      DOM.btnGrLogout.addEventListener('click', (e) => {
+        e.stopPropagation();
+        handleLogout();
+      });
+    }
+    if (DOM.btnCloseAuth) DOM.btnCloseAuth.addEventListener('click', closeAuthModal);
+    if (DOM.modalAuth) {
+      DOM.modalAuth.addEventListener('click', (e) => {
+        if (e.target === DOM.modalAuth) closeAuthModal();
+      });
+    }
+    if (DOM.tabLogin) DOM.tabLogin.addEventListener('click', () => openAuthModal('login'));
+    if (DOM.tabRegister) DOM.tabRegister.addEventListener('click', () => openAuthModal('register'));
+    if (DOM.formLogin) DOM.formLogin.addEventListener('submit', handleLoginSubmit);
+    if (DOM.formRegister) DOM.formRegister.addEventListener('submit', handleRegisterSubmit);
 
     // Bottom Bar Controls
     if (DOM.btnMeetMic) DOM.btnMeetMic.addEventListener('click', toggleMic);
@@ -1589,10 +1952,79 @@
     if (DOM.formMeetChat) {
       DOM.formMeetChat.addEventListener('submit', (e) => {
         e.preventDefault();
-        const text = DOM.inputMeetChat.value;
-        if (text) {
+        const text = DOM.inputMeetChat ? DOM.inputMeetChat.value : '';
+        if (text || state.pendingAttachment) {
           sendChatMessage(text);
-          DOM.inputMeetChat.value = '';
+          if (DOM.inputMeetChat) DOM.inputMeetChat.value = '';
+        }
+      });
+    }
+
+    // Attachment file input & button
+    if (DOM.btnAttachFile && DOM.chatFileInput) {
+      DOM.btnAttachFile.addEventListener('click', () => {
+        DOM.chatFileInput.click();
+      });
+      DOM.chatFileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+          setPendingAttachment(e.target.files[0]);
+        }
+      });
+    }
+
+    if (DOM.btnRemoveAttachment) {
+      DOM.btnRemoveAttachment.addEventListener('click', clearPendingAttachment);
+    }
+
+    if (DOM.btnCancelPrivateChat) {
+      DOM.btnCancelPrivateChat.addEventListener('click', (e) => {
+        e.stopPropagation();
+        clearPrivateChatTarget();
+      });
+    }
+
+    // Lightbox modal close events
+    if (DOM.btnLightboxClose) DOM.btnLightboxClose.addEventListener('click', closeImageLightbox);
+    if (DOM.lightboxOverlay) DOM.lightboxOverlay.addEventListener('click', closeImageLightbox);
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && DOM.imageLightboxModal && !DOM.imageLightboxModal.classList.contains('hidden')) {
+        closeImageLightbox();
+      }
+    });
+
+    // Paste image from clipboard (Ctrl + V)
+    window.addEventListener('paste', (e) => {
+      const items = (e.clipboardData || (e.originalEvent && e.originalEvent.clipboardData))?.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].kind === 'file') {
+          const blob = items[i].getAsFile();
+          if (blob) {
+            setPendingAttachment(blob);
+            if (state.activeDrawer !== 'chat') {
+              openDrawer('chat');
+            }
+            break;
+          }
+        }
+      }
+    });
+
+    // Drag and drop file to chat
+    if (DOM.panelDrawerChat) {
+      DOM.panelDrawerChat.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        DOM.panelDrawerChat.classList.add('drag-over');
+      });
+      DOM.panelDrawerChat.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        DOM.panelDrawerChat.classList.remove('drag-over');
+      });
+      DOM.panelDrawerChat.addEventListener('drop', (e) => {
+        e.preventDefault();
+        DOM.panelDrawerChat.classList.remove('drag-over');
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+          setPendingAttachment(e.dataTransfer.files[0]);
         }
       });
     }
@@ -1642,6 +2074,204 @@
   }
 
   // ─────────────────────────────────────────────────────────────────
+  // AUTHENTICATION LOGIC (LOGIN / REGISTER / LOGOUT)
+  // ─────────────────────────────────────────────────────────────────
+  function renderAuthState() {
+    const user = window.authManager?.getUser();
+    if (user) {
+      state.currentUser = user;
+      state.avatarColor = user.avatar_color || '#1a73e8';
+      state.isHost = user.role === 'host' || user.role === 'admin' || user.username === 'admin';
+
+      const initial = getInitials(user.fullname || user.username);
+      const color = user.avatar_color || '#1a73e8';
+
+      if (DOM.grChipName) DOM.grChipName.textContent = user.fullname || user.username;
+      if (DOM.grChipAvatar) {
+        DOM.grChipAvatar.textContent = initial;
+        DOM.grChipAvatar.style.backgroundColor = color;
+      }
+      if (DOM.grAvatarCircle) {
+        DOM.grAvatarCircle.textContent = initial;
+        DOM.grAvatarCircle.style.backgroundColor = color;
+      }
+      if (DOM.grInputUsername) {
+        DOM.grInputUsername.value = user.fullname || user.username;
+      }
+
+      if (DOM.grAuthButtons) DOM.grAuthButtons.classList.add('hidden');
+      if (DOM.btnGrLogout) DOM.btnGrLogout.classList.remove('hidden');
+
+      if (DOM.grAuthStatusText) {
+        DOM.grAuthStatusText.innerHTML = `🟢 Đã đăng nhập: <strong>${escapeHtml(user.fullname || user.username)}</strong> (@${escapeHtml(user.username)})`;
+      }
+      if (DOM.grAuthActionLinks) {
+        DOM.grAuthActionLinks.innerHTML = `<a href="#" id="linkGrLogoutAction" style="color:#f28b82; text-decoration:none; margin-left:8px; font-weight:500;">Đăng xuất</a>`;
+        document.getElementById('linkGrLogoutAction')?.addEventListener('click', (e) => {
+          e.preventDefault();
+          handleLogout();
+        });
+      }
+    } else {
+      state.currentUser = null;
+      if (DOM.grChipName) DOM.grChipName.textContent = 'Khách';
+      if (DOM.grChipAvatar) {
+        DOM.grChipAvatar.textContent = 'G';
+        DOM.grChipAvatar.style.backgroundColor = '#1a73e8';
+      }
+      if (DOM.grAvatarCircle) {
+        DOM.grAvatarCircle.textContent = 'K';
+        DOM.grAvatarCircle.style.backgroundColor = '#1a73e8';
+      }
+
+      if (DOM.grAuthButtons) DOM.grAuthButtons.classList.remove('hidden');
+      if (DOM.btnGrLogout) DOM.btnGrLogout.classList.add('hidden');
+
+      if (DOM.grAuthStatusText) {
+        DOM.grAuthStatusText.innerHTML = `💡 Bạn đang ở chế độ <strong>Khách</strong>.`;
+      }
+      if (DOM.grAuthActionLinks) {
+        DOM.grAuthActionLinks.innerHTML = `
+          <a href="#" id="linkGrLogin" style="color:#8ab4f8; text-decoration:none; margin-left:6px; font-weight:500;">Đăng nhập</a> hoặc 
+          <a href="#" id="linkGrRegister" style="color:#8ab4f8; text-decoration:none; font-weight:500;">Đăng ký</a>
+        `;
+        document.getElementById('linkGrLogin')?.addEventListener('click', (e) => {
+          e.preventDefault();
+          openAuthModal('login');
+        });
+        document.getElementById('linkGrRegister')?.addEventListener('click', (e) => {
+          e.preventDefault();
+          openAuthModal('register');
+        });
+      }
+    }
+  }
+
+  function openAuthModal(tab = 'login') {
+    const modal = document.getElementById('modalAuth') || DOM.modalAuth;
+    if (!modal) return;
+    modal.classList.remove('hidden');
+
+    const loginAlert = document.getElementById('loginAlert') || DOM.loginAlert;
+    const registerAlert = document.getElementById('registerAlert') || DOM.registerAlert;
+    if (loginAlert) loginAlert.classList.add('hidden');
+    if (registerAlert) registerAlert.classList.add('hidden');
+
+    const tabLogin = document.getElementById('tabLogin') || DOM.tabLogin;
+    const tabRegister = document.getElementById('tabRegister') || DOM.tabRegister;
+    const formLogin = document.getElementById('formLogin') || DOM.formLogin;
+    const formRegister = document.getElementById('formRegister') || DOM.formRegister;
+
+    if (tab === 'login') {
+      tabLogin?.classList.add('active');
+      tabRegister?.classList.remove('active');
+      formLogin?.classList.remove('hidden');
+      formRegister?.classList.add('hidden');
+      setTimeout(() => document.getElementById('loginUsername')?.focus(), 50);
+    } else {
+      tabLogin?.classList.remove('active');
+      tabRegister?.classList.add('active');
+      formLogin?.classList.add('hidden');
+      formRegister?.classList.remove('hidden');
+      setTimeout(() => document.getElementById('regFullname')?.focus(), 50);
+    }
+  }
+
+  function closeAuthModal() {
+    const modal = document.getElementById('modalAuth') || DOM.modalAuth;
+    if (modal) modal.classList.add('hidden');
+  }
+
+  async function handleLoginSubmit(e) {
+    e.preventDefault();
+    const username = DOM.loginUsername?.value?.trim();
+    const password = DOM.loginPassword?.value;
+
+    if (!username || !password) return;
+
+    if (DOM.loginAlert) DOM.loginAlert.classList.add('hidden');
+    if (DOM.btnSubmitLogin) {
+      DOM.btnSubmitLogin.disabled = true;
+      DOM.btnSubmitLogin.textContent = 'Đang đăng nhập...';
+    }
+
+    const res = await window.authManager.login(username, password);
+
+    if (DOM.btnSubmitLogin) {
+      DOM.btnSubmitLogin.disabled = false;
+      DOM.btnSubmitLogin.textContent = 'Đăng Nhập Ngay';
+    }
+
+    if (res.success && res.user) {
+      closeAuthModal();
+      renderAuthState();
+      showToast(`👋 Chào mừng bạn, ${res.user.fullname || res.user.username}!`);
+    } else {
+      if (DOM.loginAlert) {
+        DOM.loginAlert.textContent = res.message || 'Tên đăng nhập hoặc mật khẩu không đúng!';
+        DOM.loginAlert.classList.remove('hidden');
+      }
+    }
+  }
+
+  async function handleRegisterSubmit(e) {
+    e.preventDefault();
+    const fullname = DOM.regFullname?.value?.trim();
+    const username = DOM.regUsername?.value?.trim();
+    const email = DOM.regEmail?.value?.trim() || '';
+    const password = DOM.regPassword?.value;
+    const confirmPassword = DOM.regConfirmPassword?.value;
+
+    if (!fullname || !username || !password) return;
+
+    if (password !== confirmPassword) {
+      if (DOM.registerAlert) {
+        DOM.registerAlert.textContent = 'Mật khẩu xác nhận không khớp!';
+        DOM.registerAlert.classList.remove('hidden');
+      }
+      return;
+    }
+
+    if (password.length < 4) {
+      if (DOM.registerAlert) {
+        DOM.registerAlert.textContent = 'Mật khẩu phải có ít nhất 4 ký tự!';
+        DOM.registerAlert.classList.remove('hidden');
+      }
+      return;
+    }
+
+    if (DOM.registerAlert) DOM.registerAlert.classList.add('hidden');
+    if (DOM.btnSubmitRegister) {
+      DOM.btnSubmitRegister.disabled = true;
+      DOM.btnSubmitRegister.textContent = 'Đang đăng ký...';
+    }
+
+    const res = await window.authManager.register(username, password, fullname, email);
+
+    if (DOM.btnSubmitRegister) {
+      DOM.btnSubmitRegister.disabled = false;
+      DOM.btnSubmitRegister.textContent = 'Đăng Ký & Đăng Nhập';
+    }
+
+    if (res.success && res.user) {
+      closeAuthModal();
+      renderAuthState();
+      showToast(`🎉 Đăng ký thành công! Chào mừng ${res.user.fullname}`);
+    } else {
+      if (DOM.registerAlert) {
+        DOM.registerAlert.textContent = res.message || 'Đăng ký không thành công!';
+        DOM.registerAlert.classList.remove('hidden');
+      }
+    }
+  }
+
+  async function handleLogout() {
+    await window.authManager.logout();
+    renderAuthState();
+    showToast('Đã đăng xuất tài khoản.');
+  }
+
+  // ─────────────────────────────────────────────────────────────────
   // INIT ON PAGE LOAD
   // ─────────────────────────────────────────────────────────────────
   async function init() {
@@ -1649,24 +2279,13 @@
     updateClock();
     setInterval(updateClock, 1000);
 
-    // Check authenticated user
-    if (window.Auth) {
-      const user = window.Auth.getUser();
-      if (user) {
-        state.currentUser = user;
-        const initial = getInitials(user.fullname || user.username);
-        const color = user.avatar_color || '#1a73e8';
-        if (DOM.grChipName) DOM.grChipName.textContent = user.fullname || user.username;
-        if (DOM.grChipAvatar) {
-          DOM.grChipAvatar.textContent = initial;
-          DOM.grChipAvatar.style.backgroundColor = color;
-        }
-        if (DOM.grAvatarCircle) {
-          DOM.grAvatarCircle.textContent = initial;
-          DOM.grAvatarCircle.style.backgroundColor = color;
-        }
-        if (DOM.grInputUsername) DOM.grInputUsername.value = user.fullname || user.username;
-      }
+    // Gắn sự kiện giao diện (nút bấm, modal, tabs) ngay lập tức
+    bindEvents();
+
+    // Kiểm tra và khởi tạo trạng thái xác thực người dùng
+    if (window.authManager) {
+      await window.authManager.checkAuth();
+      renderAuthState();
     }
 
     // Query room info
@@ -1688,9 +2307,12 @@
       if (DOM.grRoomSummaryText) DOM.grRoomSummaryText.textContent = 'Sẵn sàng tham gia';
     }
 
-    bindEvents();
     initLocalMedia();
   }
 
-  window.addEventListener('DOMContentLoaded', init);
+  if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
 })();
