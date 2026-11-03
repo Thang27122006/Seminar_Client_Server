@@ -123,17 +123,18 @@ class RoomManager:
         return False
 
     def list_active_rooms(self):
-        """Danh sách các cuộc họp đang thực sự diễn ra (chỉ hiển thị phòng có người online > 0)."""
-        # Tự động dọn dẹp các phòng tạm khi không còn ai tham gia
-        empty_rooms = [
+        """Danh sách các cuộc họp đang diễn ra hoặc phòng vừa được khởi tạo."""
+        now = datetime.now()
+        # Chỉ dọn dẹp các phòng tạm quá 2 giờ không có người tham gia
+        expired_rooms = [
             code for code, r in self.rooms.items()
-            if code != 'seminar-network-lab' and r.online_count == 0
+            if code != 'seminar-network-lab' and r.online_count == 0 and (now - r.created_at).total_seconds() > 7200
         ]
-        for c in empty_rooms:
+        for c in expired_rooms:
             del self.rooms[c]
 
-        # Chỉ trả về các phòng đang có người online (> 0)
-        return [r.to_dict() for r in self.rooms.values() if r.online_count > 0]
+        # Trả về các phòng có người online hoặc phòng mới được tạo trong ngày
+        return [r.to_dict() for r in self.rooms.values()]
 
 
 # Singleton instance

@@ -1,1082 +1,1415 @@
+#!/usr/bin/env python3
+"""
+Trung Tâm Quản Trị & Điều Phối Phiên Họp Server (Meet Server Controller GUI).
+Seminar Lập Trình Mạng: Hệ Thống Hội Nghị Trực Tuyến & Chat Client - Server.
+
+Cung cấp giao diện đồ họa Desktop (Tkinter) chuyên nghiệp quản lý:
+1. Đa phòng họp (Meeting Rooms): Tạo phòng, Khóa phòng, Mute All, Giải tán phòng.
+2. Danh sách người tham gia theo từng phòng (Desktop App & TCP Socket Client).
+3. Điều khiển thành viên: Kích, Tắt tiếng (Mute/Unmute), Gửi tin nhắn riêng.
+4. Phát thông báo khẩn toàn máy chủ hoặc theo từng phòng cụ thể.
+5. Live Logs & Thống kê lưu lượng mạng thời gian thực.
+"""
+
 import os
 import sys
 import queue
 import threading
 import time
+import socket
+import asyncio
+import subprocess
+import platform
 from datetime import datetime
+
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext, filedialog
 
-from config import HOST, PORT
-from server.server import ChatServer
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+
+# Tự động nạp site-packages từ .venv nếu có
+venv_lib = os.path.join(BASE_DIR, '.venv', 'lib')
+if os.path.isdir(venv_lib):
+    for d in os.listdir(venv_lib):
+        sp = os.path.join(venv_lib, d, 'site-packages')
+        if os.path.isdir(sp) and sp not in sys.path:
+            sys.path.insert(0, sp)
+
+import config
+from server.hub_server import DualChatHub, start_dual_server, HOST, WEB_PORT, TCP_PORT
+from server.rooms import room_manager, MeetingRoom
+
+
+def get_local_lan_ip():
+    """Lấy địa chỉ IP mạng LAN nội bộ của máy."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('8.8.8.8', 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return '127.0.0.1'
 
 
 class ServerGUI:
-    COLOR_HEADER_BG = "#0F172A"       # Xanh đen Slate 900 sang trọng
-    COLOR_HEADER_TEXT = "#F8FAFC"     # Chữ trắng tiêu đề
-    COLOR_PAGE_BG = "#F1F5F9"         # Nền xám nhạt dịu mắt
-    COLOR_CARD = "#FFFFFF"            # Trắng khối thẻ
-    COLOR_BORDER = "#E2E8F0"          # Viền thẻ
-    COLOR_TEXT = "#0F172A"            # Chữ đen chính
-    COLOR_MUTED = "#64748B"           # Chữ phụ / chú thích
-    COLOR_PRIMARY = "#4F46E5"         # Tím xanh Indigo
-    COLOR_PRIMARY_HOVER = "#4338CA"
-    COLOR_SUCCESS = "#10B981"         # Xanh lục thành công / Online
-    COLOR_DANGER = "#EF4444"          # Đỏ nguy hiểm / Kick / Dừng
-    COLOR_DANGER_HOVER = "#DC2626"
-    COLOR_WARNING = "#F59E0B"         # Vàng cam cảnh báo
-    COLOR_INFO = "#0284C7"            # Xanh dương thông tin
-    COLOR_PURPLE = "#8B5CF6"          # Tím cho tin nhắn riêng
+    # Hệ màu chuẩn Desktop Admin Tool (Light, Clean, Professional & High Contrast)
+    COLOR_APP_BG = "#F5F6F8"       # Nền ứng dụng chính
+    COLOR_CARD = "#FFFFFF"         # Vùng bảng, thẻ, nội dung
+    COLOR_BORDER = "#D0D5DD"       # Viền chuẩn
+    COLOR_BORDER_LIGHT = "#E5E7EB" # Viền phân cách mỏng
+    COLOR_TEXT = "#1F2937"         # Chữ chính: xám đen đậm, độ tương phản cao
+    COLOR_MUTED = "#4B5563"        # Chữ phụ: xám đậm dễ đọc, không bị nhạt
+    COLOR_HINT = "#667085"         # Chữ phụ cấp 2: rõ ràng trên nền trắng
+    COLOR_PRIMARY = "#2563EB"      # Màu nhấn xanh duy nhất
+    COLOR_PRIMARY_HOVER = "#1D4ED8"
+    COLOR_SUCCESS = "#16A34A"      # Xanh lá: trực tuyến / thành công
+    COLOR_DANGER = "#DC2626"       # Đỏ: dừng / lỗi / nguy hiểm
+    COLOR_DANGER_BG = "#FEF2F2"    # Nền đỏ nhạt nút danger
+    COLOR_DANGER_BORDER = "#FECACA"
+    COLOR_WARNING = "#D97706"      # Cam cảnh báo
+    COLOR_WARNING_BG = "#FFFBEB"
+    COLOR_WARNING_BORDER = "#FDE68A"
+    COLOR_SELECT_BG = "#EFF6FF"    # Nền hàng bảng được chọn (xanh nhạt)
+    COLOR_SELECT_FG = "#111827"    # Chữ hàng bảng được chọn (màu tối tương phản cao)
+
+    # Font chữ hệ thống có hỗ trợ tiếng Việt hoàn chỉnh
+    FONT_FAMILY = "Segoe UI" if platform.system() == "Windows" else "Liberation Sans"
+    FONT_MONO = "Consolas" if platform.system() == "Windows" else "Liberation Mono"
+
+    # Hệ cỡ chữ chuẩn hóa theo pixel (trong Tkinter, số nguyên âm = kích thước hiển thị chính xác theo pixel)
+    FONT_TITLE = (FONT_FAMILY, -21, "bold")         # 21 px, semibold
+    FONT_SECTION = (FONT_FAMILY, -16, "bold")       # 16 px, semibold
+    FONT_BODY = (FONT_FAMILY, -14)                  # 14 px, regular
+    FONT_BODY_BOLD = (FONT_FAMILY, -14, "bold")     # 14 px, bold
+    FONT_BUTTON = (FONT_FAMILY, -14)                # 14 px, button medium
+    FONT_BUTTON_BOLD = (FONT_FAMILY, -14, "bold")   # 14 px, button bold
+    FONT_SUB = (FONT_FAMILY, -12)                   # 12 px, thông tin phụ (không nhỏ hơn 12px)
+    FONT_SUB_BOLD = (FONT_FAMILY, -12, "bold")      # 12 px, nhãn thống kê
+    FONT_KPI_VAL = (FONT_FAMILY, -24, "bold")       # 24 px, giá trị thống kê to rõ
+    FONT_LOG = (FONT_MONO, -13)                     # 13 px, monospace cho terminal logs
 
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("🖥️ TCP Chat Server Controller - Giám Sát & Quản Lý Client ID")
-        self.root.geometry("1140x740")
-        self.root.minsize(980, 640)
-        self.root.configure(bg=self.COLOR_PAGE_BG)
+        self.root.title("Quản trị máy chủ - Seminar Lập Trình Mạng")
+        self.root.geometry("1240x800")
+        self.root.minsize(1080, 700)
+        self.root.configure(bg=self.COLOR_APP_BG)
 
-        # Xử lý sự kiện đóng cửa sổ an toàn
+        # Xử lý đóng cửa sổ an toàn
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
-        # Server State
-        self.server = None
+        # Trạng thái Server & Async Event Loop
+        self.hub = None
         self.is_running = False
+        self.server_thread = None
+        self.server_loop = None
+        self.stop_event = None
         self.start_time = None
         self.event_queue = queue.Queue()
 
-        # Dữ liệu quản lý Client trên GUI (mapping: client_id -> dict)
-        self.client_records = {}
+        # Dữ liệu lựa chọn trên GUI
+        self.selected_room_code = "seminar-network-lab"
         self.selected_client_id = None
+        self.lan_ip = get_local_lan_ip()
 
-        # Thiết lập kiểu dáng ttk
+        # Cấu hình biến Tkinter
+        self.host_var = tk.StringVar(value=HOST)
+        self.hub_port_var = tk.StringVar(value=str(WEB_PORT))
+        self.tcp_port_var = tk.StringVar(value=str(TCP_PORT))
+
+        # Thiết lập style & giao diện
         self._setup_styles()
-
-        # Xây dựng giao diện người dùng
         self._build_ui()
 
-        # Bắt đầu vòng lặp xử lý sự kiện bất đồng bộ
-        self.root.after(40, self._process_events)
+        # Nạp dữ liệu ban đầu
+        self.refresh_all_data()
 
-        # Vòng lặp cập nhật thời gian hoạt động (Uptime)
-        self.root.after(1000, self._update_uptime_tick)
+        # Vòng lặp nhận sự kiện từ Async Loop
+        self.root.after(50, self._process_events)
+        # Vòng lặp cập nhật KPI & Uptime
+        self.root.after(1000, self._update_clock_tick)
+
+        # Tự động khởi động Server khi mở GUI
+        self.root.after(300, self.start_server)
 
     def run(self):
-        """Khởi động vòng lặp giao diện Tkinter."""
+        """Chạy giao diện chính."""
         self.root.mainloop()
 
+    # ─────────────────────────────────────────────────────────────────
+    # STYLES & THEMING (Typography & Component Sizing)
+    # ─────────────────────────────────────────────────────────────────
     def _setup_styles(self):
-        """Định dạng các widget ttk cho thẩm mỹ hiện đại."""
         style = ttk.Style()
         try:
             style.theme_use('clam')
         except tk.TclError:
             pass
 
-        style.configure(".", font=("Segoe UI", 9), background=self.COLOR_PAGE_BG)
+        style.configure(".", font=self.FONT_BODY, background=self.COLOR_APP_BG)
 
-        # Nút Bấm Chính (Khởi Động / Thao Tác)
+        # 1. Primary Button (Chiều cao 36-38px, chữ 14px bold)
         style.configure(
             "Primary.TButton",
-            font=("Segoe UI", 9, "bold"),
+            font=self.FONT_BUTTON_BOLD,
             background=self.COLOR_PRIMARY,
             foreground="#FFFFFF",
-            padding=(12, 6),
-            borderwidth=0
+            padding=(14, 8),
+            borderwidth=1,
+            bordercolor=self.COLOR_PRIMARY_HOVER,
+            relief="flat"
         )
         style.map(
             "Primary.TButton",
-            background=[("active", self.COLOR_PRIMARY_HOVER), ("pressed", "#3730A3")]
+            background=[("active", self.COLOR_PRIMARY_HOVER), ("disabled", "#93C5FD")],
+            foreground=[("disabled", "#EFF6FF")]
         )
 
-        # Nút Bấm Khởi Động (Success Button)
-        style.configure(
-            "Success.TButton",
-            font=("Segoe UI", 9, "bold"),
-            background=self.COLOR_SUCCESS,
-            foreground="#FFFFFF",
-            padding=(12, 6),
-            borderwidth=0
-        )
-        style.map(
-            "Success.TButton",
-            background=[("active", "#059669"), ("pressed", "#047857")]
-        )
-
-        # Nút Bấm Dừng / Ngắt Kết Nối (Danger Button)
-        style.configure(
-            "Danger.TButton",
-            font=("Segoe UI", 9, "bold"),
-            background=self.COLOR_DANGER,
-            foreground="#FFFFFF",
-            padding=(10, 6),
-            borderwidth=0
-        )
-        style.map(
-            "Danger.TButton",
-            background=[("active", self.COLOR_DANGER_HOVER), ("pressed", "#B91C1C")]
-        )
-
-        # Nút Bấm Phụ (Secondary Button)
+        # 2. Secondary Button (Nút trung tính nền trắng, chiều cao 36-38px, chữ 14px)
         style.configure(
             "Secondary.TButton",
-            font=("Segoe UI", 9),
-            background="#E2E8F0",
+            font=self.FONT_BUTTON,
+            background=self.COLOR_CARD,
             foreground=self.COLOR_TEXT,
-            padding=(10, 5),
-            borderwidth=0
-        )
-        style.map(
-            "Secondary.TButton",
-            background=[("active", "#CBD5E1")]
-        )
-
-        # Ô Nhập Dữ Liệu
-        style.configure(
-            "Custom.TEntry",
-            padding=5,
+            padding=(12, 8),
+            borderwidth=1,
+            bordercolor=self.COLOR_BORDER,
             relief="flat"
         )
+        style.map(
+            "Secondary.TButton",
+            background=[("active", "#F3F4F6"), ("disabled", "#F9FAFB")],
+            foreground=[("disabled", self.COLOR_HINT)]
+        )
 
-        # Bảng Danh Sách Client (Treeview)
+        # 3. Danger Button (Hành động nguy hiểm / dừng máy chủ: nền đỏ nhẹ, chữ 14px)
+        style.configure(
+            "Danger.TButton",
+            font=self.FONT_BUTTON,
+            background=self.COLOR_DANGER_BG,
+            foreground=self.COLOR_DANGER,
+            padding=(12, 8),
+            borderwidth=1,
+            bordercolor=self.COLOR_DANGER_BORDER,
+            relief="flat"
+        )
+        style.map(
+            "Danger.TButton",
+            background=[("active", "#FEE2E2"), ("disabled", self.COLOR_DANGER_BG)],
+            foreground=[("disabled", "#FCA5A5")]
+        )
+
+        # 4. Success Button (Khởi động Server: xanh lá, chữ 14px bold)
+        style.configure(
+            "Success.TButton",
+            font=self.FONT_BUTTON_BOLD,
+            background=self.COLOR_SUCCESS,
+            foreground="#FFFFFF",
+            padding=(14, 8),
+            borderwidth=1,
+            bordercolor="#15803D",
+            relief="flat"
+        )
+        style.map(
+            "Success.TButton",
+            background=[("active", "#15803D"), ("disabled", "#86EFAC")],
+            foreground=[("disabled", "#EFF6FF")]
+        )
+
+        # 5. Warning Button (Tắt âm / cảnh báo nhẹ)
+        style.configure(
+            "Warning.TButton",
+            font=self.FONT_BUTTON,
+            background=self.COLOR_WARNING_BG,
+            foreground=self.COLOR_WARNING,
+            padding=(12, 8),
+            borderwidth=1,
+            bordercolor=self.COLOR_WARNING_BORDER,
+            relief="flat"
+        )
+        style.map(
+            "Warning.TButton",
+            background=[("active", "#FEF3C7"), ("disabled", self.COLOR_WARNING_BG)],
+            foreground=[("disabled", "#FCD34D")]
+        )
+
+        # 6. Entry Style (Chiều cao 35-37px, chữ 14px)
+        style.configure(
+            "TEntry",
+            font=self.FONT_BODY,
+            padding=(8, 7)
+        )
+
+        # 7. Combobox Style (Chiều cao 35-37px, chữ 14px)
+        style.configure(
+            "TCombobox",
+            font=self.FONT_BODY,
+            padding=(8, 7)
+        )
+
+        # 8. Notebook Tab Styles (Tab thoáng 20x10 padding, chữ 14px, không cắt chữ)
+        style.configure(
+            "TNotebook",
+            background=self.COLOR_APP_BG,
+            borderwidth=0,
+            tabmargins=[0, 0, 0, 0]
+        )
+        style.configure(
+            "TNotebook.Tab",
+            font=self.FONT_BODY,
+            padding=(20, 10),
+            background="#E5E7EB",
+            foreground=self.COLOR_MUTED,
+            borderwidth=0
+        )
+        style.map(
+            "TNotebook.Tab",
+            background=[("selected", self.COLOR_CARD)],
+            foreground=[("selected", self.COLOR_PRIMARY)],
+            font=[("selected", self.FONT_BODY_BOLD)]
+        )
+
+        # 9. Treeview Table Styles (Hàng dữ liệu cao 36px, header cao 38px, chữ 14px)
         style.configure(
             "Treeview",
-            background="#FFFFFF",
+            background=self.COLOR_CARD,
             foreground=self.COLOR_TEXT,
-            rowheight=28,
-            fieldbackground="#FFFFFF",
-            font=("Segoe UI", 9),
+            rowheight=36,
+            fieldbackground=self.COLOR_CARD,
+            font=self.FONT_BODY,
             borderwidth=0
         )
         style.configure(
             "Treeview.Heading",
-            background="#F8FAFC",
-            foreground=self.COLOR_TEXT,
-            font=("Segoe UI", 9, "bold"),
-            padding=(6, 6)
+            background="#F9FAFB",
+            foreground="#374151",
+            font=self.FONT_BODY_BOLD,
+            padding=(8, 7),
+            borderwidth=1,
+            relief="flat"
         )
         style.map(
             "Treeview",
-            background=[("selected", "#EEF2FF")],
-            foreground=[("selected", self.COLOR_PRIMARY)]
+            background=[("selected", self.COLOR_SELECT_BG)],
+            foreground=[("selected", self.COLOR_SELECT_FG)]
         )
 
+    # ─────────────────────────────────────────────────────────────────
+    # XÂY DỰNG GIAO DIỆN CHÍNH
+    # ─────────────────────────────────────────────────────────────────
     def _build_ui(self):
-        """Xây dựng toàn bộ cây giao diện của Server Dashboard."""
-        # 1. THANH TIÊU ĐỀ TRÊN CÙNG (DARK HEADER)
+        # 1. Thanh tiêu đề trên cùng (Clean Light Header)
         self._build_header()
 
-        # 2. KHỐI THẺ THỐNG KÊ & ĐIỀU KHIỂN (METRIC & CONTROL CARDS)
-        self._build_top_cards()
+        # 2. Dải điều khiển dịch vụ & Chỉ số KPI (Unified Toolbar & Metrics)
+        self._build_metric_cards()
 
-        # 3. KHU VỰC TRUNG TÂM (CHIA ĐÔI: BẢNG CLIENT ID BÊN TRÁI, LOGS & BROADCAST BÊN PHẢI)
-        self._build_center_panes()
+        # 3. Khu vực nội dung các Tabs chính
+        self._build_main_tabs()
 
-        # 4. THANH TRẠNG THÁI CUỐI TRANG (STATUS BAR)
+        # 4. Thanh trạng thái đáy trang (Status Bar)
         self._build_status_bar()
 
     def _build_header(self):
-        """Thanh Header mang nhận diện chuyên nghiệp của Quản trị máy chủ."""
-        header = tk.Frame(self.root, bg=self.COLOR_HEADER_BG, height=60, padx=20, pady=10)
-        header.pack(fill=tk.X, side=tk.TOP)
+        """Header trên cùng: Tiêu đề 21px, thông tin phụ 12-13px, trạng thái & uptime 14px."""
+        header_outer = tk.Frame(self.root, bg=self.COLOR_CARD)
+        header_outer.pack(fill=tk.X, side=tk.TOP)
+
+        header = tk.Frame(header_outer, bg=self.COLOR_CARD, height=64, padx=22, pady=10)
+        header.pack(fill=tk.X)
         header.pack_propagate(False)
 
-        # Góc trái: Tiêu đề & Giới thiệu
-        title_box = tk.Frame(header, bg=self.COLOR_HEADER_BG)
-        title_box.pack(side=tk.LEFT, fill=tk.Y)
+        # Góc trái: Tiêu đề 21px semibold & Subtitle 12-13px
+        left_box = tk.Frame(header, bg=self.COLOR_CARD)
+        left_box.pack(side=tk.LEFT, fill=tk.Y)
 
-        lbl_icon_title = tk.Label(
-            title_box,
-            text="🖥️  TCP CHAT SERVER CONTROLLER",
-            font=("Segoe UI", 12, "bold"),
-            fg=self.COLOR_HEADER_TEXT,
-            bg=self.COLOR_HEADER_BG
+        lbl_title = tk.Label(
+            left_box,
+            text="Quản trị máy chủ",
+            font=self.FONT_TITLE,
+            fg=self.COLOR_TEXT,
+            bg=self.COLOR_CARD
         )
-        lbl_icon_title.pack(anchor=tk.W)
+        lbl_title.pack(anchor=tk.W)
 
         lbl_sub = tk.Label(
-            title_box,
-            text="Hệ Thống Quản Lý Kết Nối & Giám Sát Client ID • Seminar Lập Trình Mạng",
-            font=("Segoe UI", 8),
-            fg="#94A3B8",
-            bg=self.COLOR_HEADER_BG
+            left_box,
+            text=f"Hệ thống hội nghị trực tuyến • IP LAN: {self.lan_ip}",
+            font=self.FONT_SUB,
+            fg=self.COLOR_MUTED,
+            bg=self.COLOR_CARD
         )
-        lbl_sub.pack(anchor=tk.W)
+        lbl_sub.pack(anchor=tk.W, pady=(2, 0))
 
-        # Góc phải: Huy hiệu trạng thái & Bộ đếm thời gian
-        right_box = tk.Frame(header, bg=self.COLOR_HEADER_BG)
+        # Góc phải: Chấm trạng thái nhỏ & Thời gian chạy (14px)
+        right_box = tk.Frame(header, bg=self.COLOR_CARD)
         right_box.pack(side=tk.RIGHT, fill=tk.Y)
 
         self.lbl_server_status_badge = tk.Label(
             right_box,
-            text="● ĐÃ DỪNG (STOPPED)",
-            font=("Segoe UI", 9, "bold"),
-            fg="#FFFFFF",
-            bg="#EF4444",
-            padx=12,
-            pady=4,
-            relief=tk.FLAT
+            text="● Đã dừng",
+            font=self.FONT_BODY_BOLD,
+            fg=self.COLOR_DANGER,
+            bg=self.COLOR_CARD,
+            padx=4,
+            pady=2
         )
-        self.lbl_server_status_badge.pack(side=tk.LEFT, padx=10)
+        self.lbl_server_status_badge.pack(side=tk.LEFT, padx=(0, 14))
+
+        tk.Label(
+            right_box, text="|", font=self.FONT_BODY,
+            fg=self.COLOR_BORDER, bg=self.COLOR_CARD
+        ).pack(side=tk.LEFT, padx=(0, 14))
 
         self.lbl_uptime = tk.Label(
             right_box,
-            text="⏱️ Uptime: 00:00:00",
-            font=("Segoe UI", 9, "bold"),
-            fg="#E2E8F0",
-            bg=self.COLOR_HEADER_BG
+            text="Thời gian chạy: 00:00:00",
+            font=self.FONT_BODY,
+            fg=self.COLOR_MUTED,
+            bg=self.COLOR_CARD
         )
         self.lbl_uptime.pack(side=tk.LEFT)
 
-    def _build_top_cards(self):
-        """Khối điều khiển Server nhanh và các chỉ số KPI hoạt động."""
-        container = tk.Frame(self.root, bg=self.COLOR_PAGE_BG, padx=16, pady=12)
+        sep = tk.Frame(header_outer, bg=self.COLOR_BORDER_LIGHT, height=1)
+        sep.pack(fill=tk.X, side=tk.BOTTOM)
+
+    def _build_metric_cards(self):
+        """Dải điều khiển dịch vụ và 4 thẻ thống kê được trình bày nhất quán trên cùng một hàng."""
+        container = tk.Frame(self.root, bg=self.COLOR_APP_BG, padx=16, pady=10)
         container.pack(fill=tk.X, side=tk.TOP)
 
-        # Chia thành lưới 4 cột (Điều khiển | Online | Tổng Phiên | Tổng Tin nhắn)
-        container.columnconfigure(0, weight=4)
-        container.columnconfigure(1, weight=2)
-        container.columnconfigure(2, weight=2)
-        container.columnconfigure(3, weight=2)
+        container.columnconfigure(0, weight=5)  # Thẻ điều khiển dịch vụ
+        container.columnconfigure(1, weight=2)  # Số phiên họp
+        container.columnconfigure(2, weight=2)  # Thành viên online
+        container.columnconfigure(3, weight=2)  # Tổng tin nhắn
+        container.columnconfigure(4, weight=2)  # Lưu lượng mạng
 
-        # --- Thẻ 1: Điều Khiển Khởi Động / Dừng Máy Chủ ---
+        # --- Khối 1: Điều Khiển Dịch Vụ Máy Chủ ---
         card_ctrl = tk.Frame(
             container, bg=self.COLOR_CARD, bd=1, relief=tk.SOLID,
             highlightbackground=self.COLOR_BORDER, highlightthickness=1, padx=14, pady=10
         )
-        card_ctrl.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        card_ctrl.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
 
         lbl_ctrl_title = tk.Label(
-            card_ctrl, text="⚙️ CẤU HÌNH & KHỞI ĐỘNG MÁY CHỦ",
-            font=("Segoe UI", 9, "bold"), fg=self.COLOR_PRIMARY, bg=self.COLOR_CARD
+            card_ctrl, text="ĐIỀU KHIỂN DỊCH VỤ",
+            font=self.FONT_SUB_BOLD, fg=self.COLOR_MUTED, bg=self.COLOR_CARD
         )
-        lbl_ctrl_title.pack(anchor=tk.W, pady=(0, 6))
+        lbl_ctrl_title.pack(anchor=tk.W)
 
-        cfg_row = tk.Frame(card_ctrl, bg=self.COLOR_CARD)
-        cfg_row.pack(fill=tk.X, pady=(0, 6))
+        ctrl_row = tk.Frame(card_ctrl, bg=self.COLOR_CARD, pady=4)
+        ctrl_row.pack(fill=tk.X)
 
-        tk.Label(cfg_row, text="IP:", font=("Segoe UI", 9, "bold"), fg=self.COLOR_TEXT, bg=self.COLOR_CARD).pack(side=tk.LEFT)
-        self.entry_host = ttk.Entry(cfg_row, width=14, style="Custom.TEntry")
-        self.entry_host.insert(0, HOST)
-        self.entry_host.pack(side=tk.LEFT, padx=(4, 10))
+        tk.Label(ctrl_row, text="Hub Port:", font=self.FONT_BODY, bg=self.COLOR_CARD, fg=self.COLOR_MUTED).pack(side=tk.LEFT)
+        ent_hub_port = ttk.Entry(ctrl_row, textvariable=self.hub_port_var, width=7, style="TEntry")
+        ent_hub_port.pack(side=tk.LEFT, padx=(4, 12))
 
-        tk.Label(cfg_row, text="Port:", font=("Segoe UI", 9, "bold"), fg=self.COLOR_TEXT, bg=self.COLOR_CARD).pack(side=tk.LEFT)
-        self.entry_port = ttk.Entry(cfg_row, width=7, style="Custom.TEntry")
-        self.entry_port.insert(0, str(PORT))
-        self.entry_port.pack(side=tk.LEFT, padx=(4, 10))
+        tk.Label(ctrl_row, text="TCP Port:", font=self.FONT_BODY, bg=self.COLOR_CARD, fg=self.COLOR_MUTED).pack(side=tk.LEFT)
+        ent_tcp_port = ttk.Entry(ctrl_row, textvariable=self.tcp_port_var, width=7, style="TEntry")
+        ent_tcp_port.pack(side=tk.LEFT, padx=(4, 14))
 
-        # Phím chọn nhanh IP (LAN / 127.0.0.1 / 0.0.0.0)
-        btn_preset_local = tk.Button(
-            cfg_row, text="Localhost", font=("Segoe UI", 8),
-            bg="#F1F5F9", fg=self.COLOR_TEXT, relief=tk.FLAT, padx=5, pady=1,
-            command=lambda: self._set_host("127.0.0.1")
-        )
-        btn_preset_local.pack(side=tk.LEFT, padx=2)
-
-        btn_preset_all = tk.Button(
-            cfg_row, text="0.0.0.0", font=("Segoe UI", 8),
-            bg="#F1F5F9", fg=self.COLOR_TEXT, relief=tk.FLAT, padx=5, pady=1,
-            command=lambda: self._set_host("0.0.0.0")
-        )
-        btn_preset_all.pack(side=tk.LEFT, padx=2)
-
-        # Nút Bật / Tắt Server
         self.btn_toggle_server = ttk.Button(
-            card_ctrl,
-            text="▶ Khởi Động Server",
-            style="Success.TButton",
-            command=self.action_toggle_server
+            ctrl_row, text="Bật máy chủ", style="Success.TButton", command=self.toggle_server
         )
-        self.btn_toggle_server.pack(fill=tk.X, pady=(4, 0))
+        self.btn_toggle_server.pack(side=tk.LEFT, padx=(0, 8))
 
-        # --- Thẻ 2: Số Client Online ---
-        card_online = self._create_metric_card(
-            container, col=1, title="CLIENTS ONLINE",
-            default_val="0", label="Đang kết nối", color=self.COLOR_SUCCESS, icon="👥"
+        btn_open_app = ttk.Button(
+            ctrl_row, text="Mở Desktop App", style="Secondary.TButton", command=self.open_desktop_app
         )
-        self.lbl_val_online = card_online
+        btn_open_app.pack(side=tk.LEFT)
 
-        # --- Thẻ 3: Tổng Lượt Kết Nối (Sessions) ---
-        card_total = self._create_metric_card(
-            container, col=2, title="TỔNG KẾT NỐI",
-            default_val="0", label="Lượt Client đã vào", color=self.COLOR_PRIMARY, icon="📈"
-        )
-        self.lbl_val_total_conns = card_total
+        # --- Khối 2: KPI Phiên Họp ---
+        self.lbl_kpi_rooms = self._create_kpi_card(container, 1, "PHIÊN HỌP", "1", "Phòng đang mở")
 
-        # --- Thẻ 4: Tổng Tin Nhắn Gửi Nhận ---
-        card_msgs = self._create_metric_card(
-            container, col=3, title="TỔNG TIN NHẮN",
-            default_val="0", label="Gói tin trung chuyển", color=self.COLOR_INFO, icon="💬"
-        )
-        self.lbl_val_total_msgs = card_msgs
+        # --- Khối 3: KPI Thành Viên Online ---
+        self.lbl_kpi_online = self._create_kpi_card(container, 2, "TRỰC TUYẾN", "0", "Desktop & TCP")
 
-    def _create_metric_card(self, parent, col, title, default_val, label, color, icon):
-        """Hàm tiện ích tạo thẻ chỉ số đẹp mắt."""
+        # --- Khối 4: KPI Tổng Tin Nhắn ---
+        self.lbl_kpi_messages = self._create_kpi_card(container, 3, "TỔNG TIN NHẮN", "0", "Chat & Whisper")
+
+        # --- Khối 5: KPI Lưu Lượng Mạng ---
+        self.lbl_kpi_traffic = self._create_kpi_card(container, 4, "LƯU LƯỢNG", "0 B", "Dữ liệu truyền tải")
+
+    def _create_kpi_card(self, parent, col, title, initial_val, subtext):
+        """Tạo thẻ thống kê với typography rõ nét (giá trị 24px, nhãn phụ 12px không mờ)."""
         card = tk.Frame(
             parent, bg=self.COLOR_CARD, bd=1, relief=tk.SOLID,
             highlightbackground=self.COLOR_BORDER, highlightthickness=1, padx=14, pady=10
         )
-        card.grid(row=0, column=col, sticky="nsew", padx=(0, 10 if col < 3 else 0))
-
-        top_row = tk.Frame(card, bg=self.COLOR_CARD)
-        top_row.pack(fill=tk.X)
+        card.grid(row=0, column=col, sticky="nsew", padx=3)
 
         tk.Label(
-            top_row, text=f"{icon} {title}", font=("Segoe UI", 8, "bold"),
-            fg=self.COLOR_MUTED, bg=self.COLOR_CARD
-        ).pack(side=tk.LEFT)
-
-        val_label = tk.Label(
-            card, text=default_val, font=("Segoe UI", 22, "bold"),
-            fg=color, bg=self.COLOR_CARD
-        )
-        val_label.pack(anchor=tk.W, pady=(2, 0))
-
-        tk.Label(
-            card, text=label, font=("Segoe UI", 8),
+            card, text=title, font=self.FONT_SUB_BOLD,
             fg=self.COLOR_MUTED, bg=self.COLOR_CARD
         ).pack(anchor=tk.W)
 
-        return val_label
-
-    def _set_host(self, host_val):
-        """Cập nhật giá trị ô nhập Host."""
-        if not self.is_running:
-            self.entry_host.delete(0, tk.END)
-            self.entry_host.insert(0, host_val)
-
-    def _build_center_panes(self):
-        center_frame = tk.Frame(self.root, bg=self.COLOR_PAGE_BG, padx=16, pady=0)
-        center_frame.pack(fill=tk.BOTH, expand=True)
-
-        self.paned = ttk.PanedWindow(center_frame, orient=tk.HORIZONTAL)
-        self.paned.pack(fill=tk.BOTH, expand=True)
-
-        # ─── BÊN TRÁI: QUẢN LÝ CLIENT & HIỂN THỊ CLIENT ID ───
-        left_card = tk.Frame(
-            self.paned, bg=self.COLOR_CARD, bd=1, relief=tk.SOLID,
-            highlightbackground=self.COLOR_BORDER, highlightthickness=1, padx=14, pady=12
+        lbl_val = tk.Label(
+            card, text=initial_val, font=self.FONT_KPI_VAL,
+            fg=self.COLOR_TEXT, bg=self.COLOR_CARD
         )
-        self.paned.add(left_card, weight=3)
-
-        # Header bảng Client
-        left_header = tk.Frame(left_card, bg=self.COLOR_CARD)
-        left_header.pack(fill=tk.X, pady=(0, 8))
-
-        lbl_client_section = tk.Label(
-            left_header,
-            text="👥 DANH SÁCH CLIENTS KẾT NỐI (HIỂN THỊ CLIENT ID)",
-            font=("Segoe UI", 10, "bold"),
-            fg=self.COLOR_TEXT,
-            bg=self.COLOR_CARD
-        )
-        lbl_client_section.pack(side=tk.LEFT)
-
-        # Ô tìm kiếm / lọc Client
-        search_box = tk.Frame(left_header, bg=self.COLOR_CARD)
-        search_box.pack(side=tk.RIGHT)
-
-        tk.Label(search_box, text="🔍", font=("Segoe UI", 9), bg=self.COLOR_CARD).pack(side=tk.LEFT)
-        self.entry_search_client = ttk.Entry(search_box, width=16, style="Custom.TEntry")
-        self.entry_search_client.pack(side=tk.LEFT, padx=(2, 0))
-        self.entry_search_client.bind("<KeyRelease>", lambda e: self._filter_client_tree())
-
-        # Bảng Treeview hiển thị Client ID và các thông số
-        tree_frame = tk.Frame(left_card, bg=self.COLOR_CARD)
-        tree_frame.pack(fill=tk.BOTH, expand=True, pady=4)
-
-        columns = ("id", "username", "address", "fileno", "connected_at", "status", "msg_count")
-        self.client_tree = ttk.Treeview(
-            tree_frame,
-            columns=columns,
-            show="headings",
-            selectmode="browse"
-        )
-
-        # Định dạng tiêu đề và độ rộng từng cột
-        self.client_tree.heading("id", text="Client ID", anchor=tk.CENTER)
-        self.client_tree.heading("username", text="Username", anchor=tk.W)
-        self.client_tree.heading("address", text="Địa chỉ IP : Port", anchor=tk.W)
-        self.client_tree.heading("fileno", text="Socket FD", anchor=tk.CENTER)
-        self.client_tree.heading("connected_at", text="Giờ vào", anchor=tk.CENTER)
-        self.client_tree.heading("status", text="Trạng thái", anchor=tk.CENTER)
-        self.client_tree.heading("msg_count", text="Số tin", anchor=tk.CENTER)
-
-        self.client_tree.column("id", width=85, minwidth=75, anchor=tk.CENTER)
-        self.client_tree.column("username", width=120, minwidth=90, anchor=tk.W)
-        self.client_tree.column("address", width=145, minwidth=110, anchor=tk.W)
-        self.client_tree.column("fileno", width=75, minwidth=60, anchor=tk.CENTER)
-        self.client_tree.column("connected_at", width=75, minwidth=65, anchor=tk.CENTER)
-        self.client_tree.column("status", width=95, minwidth=80, anchor=tk.CENTER)
-        self.client_tree.column("msg_count", width=60, minwidth=50, anchor=tk.CENTER)
-
-        # Scrollbars cho Treeview
-        tree_scroll_y = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self.client_tree.yview)
-        tree_scroll_x = ttk.Scrollbar(tree_frame, orient=tk.HORIZONTAL, command=self.client_tree.xview)
-        self.client_tree.configure(yscrollcommand=tree_scroll_y.set, xscrollcommand=tree_scroll_x.set)
-
-        self.client_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        tree_scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
-        tree_scroll_x.pack(side=tk.BOTTOM, fill=tk.X)
-
-        # Gắn thẻ màu cho các trạng thái trong bảng
-        self.client_tree.tag_configure("online", background="#ECFDF5", foreground="#065F46")
-        self.client_tree.tag_configure("pending", background="#FFFBEB", foreground="#92400E")
-        self.client_tree.tag_configure("disconnected", background="#F8FAFC", foreground="#94A3B8")
-
-        # Bắt sự kiện chọn dòng trên bảng
-        self.client_tree.bind("<<TreeviewSelect>>", self._on_client_selected)
-
-        # Thanh thao tác Client được chọn (Kick, Gửi PM, Copy)
-        action_bar = tk.Frame(left_card, bg="#F8FAFC", bd=1, relief=tk.SOLID, padx=10, pady=8)
-        action_bar.pack(fill=tk.X, pady=(8, 0))
-
-        self.lbl_selected_info = tk.Label(
-            action_bar,
-            text="👉 Hãy chọn một Client từ bảng để thao tác",
-            font=("Segoe UI", 9, "bold"),
-            fg=self.COLOR_MUTED,
-            bg="#F8FAFC"
-        )
-        self.lbl_selected_info.pack(anchor=tk.W, pady=(0, 6))
-
-        btn_row = tk.Frame(action_bar, bg="#F8FAFC")
-        btn_row.pack(fill=tk.X)
-
-        self.btn_kick = ttk.Button(
-            btn_row,
-            text="🚫 Kick (Ngắt kết nối)",
-            style="Danger.TButton",
-            command=self.action_kick_selected,
-            state=tk.DISABLED
-        )
-        self.btn_kick.pack(side=tk.LEFT, padx=(0, 6))
-
-        self.btn_pm = ttk.Button(
-            btn_row,
-            text="✉️ Gửi Tin Riêng (PM)",
-            style="Primary.TButton",
-            command=self.action_pm_selected,
-            state=tk.DISABLED
-        )
-        self.btn_pm.pack(side=tk.LEFT, padx=(0, 6))
-
-        self.btn_copy_info = ttk.Button(
-            btn_row,
-            text="📋 Copy ID & IP",
-            style="Secondary.TButton",
-            command=self.action_copy_client_info,
-            state=tk.DISABLED
-        )
-        self.btn_copy_info.pack(side=tk.LEFT, padx=(0, 6))
-
-        # ─── BÊN PHẢI: NHẬT KÝ HOẠT ĐỘNG & PHÁT THÔNG BÁO HỆ THỐNG ───
-        right_card = tk.Frame(
-            self.paned, bg=self.COLOR_CARD, bd=1, relief=tk.SOLID,
-            highlightbackground=self.COLOR_BORDER, highlightthickness=1, padx=14, pady=12
-        )
-        self.paned.add(right_card, weight=3)
-
-        # Header Nhật ký
-        right_header = tk.Frame(right_card, bg=self.COLOR_CARD)
-        right_header.pack(fill=tk.X, pady=(0, 8))
-
-        lbl_log_title = tk.Label(
-            right_header,
-            text="📜 NHẬT KÝ MÁY CHỦ THỜI GIAN THỰC",
-            font=("Segoe UI", 10, "bold"),
-            fg=self.COLOR_TEXT,
-            bg=self.COLOR_CARD
-        )
-        lbl_log_title.pack(side=tk.LEFT)
-
-        # Bộ lọc nhật ký và các nút tiện ích
-        log_tools = tk.Frame(right_header, bg=self.COLOR_CARD)
-        log_tools.pack(side=tk.RIGHT)
-
-        self.auto_scroll_var = tk.BooleanVar(value=True)
-        chk_scroll = tk.Checkbutton(
-            log_tools, text="Tự cuộn", variable=self.auto_scroll_var,
-            font=("Segoe UI", 8), bg=self.COLOR_CARD, activebackground=self.COLOR_CARD
-        )
-        chk_scroll.pack(side=tk.LEFT, padx=(0, 8))
-
-        btn_clear_log = ttk.Button(
-            log_tools, text="🗑️ Xóa", style="Secondary.TButton",
-            command=self.action_clear_log
-        )
-        btn_clear_log.pack(side=tk.LEFT, padx=(0, 4))
-
-        btn_save_log = ttk.Button(
-            log_tools, text="💾 Lưu file", style="Secondary.TButton",
-            command=self.action_save_log
-        )
-        btn_save_log.pack(side=tk.LEFT)
-
-        # Khung văn bản hiển thị Nhật ký với màu sắc phong phú
-        self.txt_log = scrolledtext.ScrolledText(
-            right_card,
-            wrap=tk.WORD,
-            font=("Consolas", 9),
-            bg="#0F172A",
-            fg="#E2E8F0",
-            relief=tk.FLAT,
-            padx=10,
-            pady=10,
-            state=tk.DISABLED
-        )
-        self.txt_log.pack(fill=tk.BOTH, expand=True, pady=4)
-        self._configure_log_tags()
-
-        # KHUNG PHÁT THÔNG BÁO TỚI TẤT CẢ CLIENT (BROADCAST)
-        broadcast_box = tk.Frame(right_card, bg="#F8FAFC", bd=1, relief=tk.SOLID, padx=10, pady=8)
-        broadcast_box.pack(fill=tk.X, pady=(8, 0))
+        lbl_val.pack(anchor=tk.W, pady=(2, 1))
 
         tk.Label(
-            broadcast_box,
-            text="📢 PHÁT THÔNG BÁO TOÀN HỆ THỐNG (BROADCAST ANNOUNCEMENT):",
-            font=("Segoe UI", 9, "bold"),
-            fg=self.COLOR_PRIMARY,
-            bg="#F8FAFC"
+            card, text=subtext, font=self.FONT_SUB,
+            fg=self.COLOR_HINT, bg=self.COLOR_CARD
+        ).pack(anchor=tk.W)
+
+        return lbl_val
+
+    def _build_main_tabs(self):
+        container = tk.Frame(self.root, bg=self.COLOR_APP_BG, padx=16, pady=2)
+        container.pack(fill=tk.BOTH, expand=True)
+
+        self.notebook = ttk.Notebook(container)
+        self.notebook.pack(fill=tk.BOTH, expand=True)
+
+        # Tab 1: Quản lý Phiên Họp
+        self.tab_rooms = tk.Frame(self.notebook, bg=self.COLOR_APP_BG, padx=4, pady=6)
+        self.notebook.add(self.tab_rooms, text=" Quản lý phiên họp ")
+        self._build_rooms_tab()
+
+        # Tab 2: Toàn Bộ Client
+        self.tab_clients = tk.Frame(self.notebook, bg=self.COLOR_APP_BG, padx=4, pady=6)
+        self.notebook.add(self.tab_clients, text=" Toàn bộ Client ")
+        self._build_clients_tab()
+
+        # Tab 3: Phát Thông Báo
+        self.tab_broadcast = tk.Frame(self.notebook, bg=self.COLOR_APP_BG, padx=4, pady=6)
+        self.notebook.add(self.tab_broadcast, text=" Phát thông báo ")
+        self._build_broadcast_tab()
+
+        # Tab 4: Nhật Ký Máy Chủ
+        self.tab_logs = tk.Frame(self.notebook, bg=self.COLOR_APP_BG, padx=4, pady=6)
+        self.notebook.add(self.tab_logs, text=" Nhật ký máy chủ ")
+        self._build_logs_tab()
+
+    # ─────────────────────────────────────────────────────────────────
+    # TAB 1: QUẢN LÝ PHIÊN HỌP (MEETING ROOMS & PARTICIPANTS)
+    # ─────────────────────────────────────────────────────────────────
+    def _build_rooms_tab(self):
+        # Chia đôi khung: Nửa trên danh sách phòng, Nửa dưới thành viên trong phòng đang chọn
+        paned = tk.PanedWindow(self.tab_rooms, orient=tk.VERTICAL, bg=self.COLOR_APP_BG, sashwidth=6, bd=0)
+        paned.pack(fill=tk.BOTH, expand=True)
+
+        # === 1. KHUNG TRÊN: PHÒNG HỌP ===
+        frame_rooms_box = tk.Frame(
+            paned, bg=self.COLOR_CARD, bd=1, relief=tk.SOLID,
+            highlightbackground=self.COLOR_BORDER, highlightthickness=1
+        )
+        paned.add(frame_rooms_box, height=290)
+
+        # Toolbar trên bảng phòng họp
+        toolbar_rooms = tk.Frame(frame_rooms_box, bg=self.COLOR_CARD, padx=14, pady=10)
+        toolbar_rooms.pack(fill=tk.X)
+
+        lbl_rooms_header = tk.Label(
+            toolbar_rooms, text="Phòng họp",
+            font=self.FONT_SECTION, fg=self.COLOR_TEXT, bg=self.COLOR_CARD
+        )
+        lbl_rooms_header.pack(side=tk.LEFT)
+
+        btn_refresh_rooms = ttk.Button(toolbar_rooms, text="Làm mới", style="Secondary.TButton", command=self.refresh_rooms_list)
+        btn_refresh_rooms.pack(side=tk.RIGHT, padx=4)
+
+        btn_disband_room = ttk.Button(toolbar_rooms, text="Giải tán phòng", style="Danger.TButton", command=self.on_disband_room)
+        btn_disband_room.pack(side=tk.RIGHT, padx=4)
+
+        btn_mute_room = ttk.Button(toolbar_rooms, text="Tắt âm phòng", style="Secondary.TButton", command=self.on_mute_room)
+        btn_mute_room.pack(side=tk.RIGHT, padx=4)
+
+        self.btn_lock_room = ttk.Button(toolbar_rooms, text="Khóa / Mở khóa", style="Secondary.TButton", command=self.on_toggle_lock_room)
+        self.btn_lock_room.pack(side=tk.RIGHT, padx=4)
+
+        btn_new_room = ttk.Button(toolbar_rooms, text="Tạo cuộc họp", style="Primary.TButton", command=self.open_create_room_modal)
+        btn_new_room.pack(side=tk.RIGHT, padx=4)
+
+        # Bảng Treeview danh sách phòng
+        tree_container = tk.Frame(frame_rooms_box, bg=self.COLOR_CARD)
+        tree_container.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
+
+        columns_room = ("code", "title", "host", "online", "locked", "chat", "created_at")
+        self.tree_rooms = ttk.Treeview(tree_container, columns=columns_room, show="headings", selectmode="browse")
+
+        self.tree_rooms.heading("code", text="Mã phòng")
+        self.tree_rooms.heading("title", text="Tên cuộc họp")
+        self.tree_rooms.heading("host", text="Chủ trì")
+        self.tree_rooms.heading("online", text="Trực tuyến")
+        self.tree_rooms.heading("locked", text="Bảo mật")
+        self.tree_rooms.heading("chat", text="Chat chung")
+        self.tree_rooms.heading("created_at", text="Thời điểm tạo")
+
+        self.tree_rooms.column("code", width=160, anchor=tk.CENTER)
+        self.tree_rooms.column("title", width=280, anchor=tk.W)
+        self.tree_rooms.column("host", width=160, anchor=tk.W)
+        self.tree_rooms.column("online", width=90, anchor=tk.CENTER)
+        self.tree_rooms.column("locked", width=100, anchor=tk.CENTER)
+        self.tree_rooms.column("chat", width=100, anchor=tk.CENTER)
+        self.tree_rooms.column("created_at", width=120, anchor=tk.CENTER)
+
+        sb_rooms = ttk.Scrollbar(tree_container, orient=tk.VERTICAL, command=self.tree_rooms.yview)
+        self.tree_rooms.configure(yscrollcommand=sb_rooms.set)
+
+        self.tree_rooms.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        sb_rooms.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.tree_rooms.bind("<<TreeviewSelect>>", self.on_room_select)
+
+        # === 2. KHUNG DƯỚI: THÀNH VIÊN TRONG PHÒNG ĐANG CHỌN ===
+        frame_members_box = tk.Frame(
+            paned, bg=self.COLOR_CARD, bd=1, relief=tk.SOLID,
+            highlightbackground=self.COLOR_BORDER, highlightthickness=1
+        )
+        paned.add(frame_members_box, height=270)
+
+        toolbar_members = tk.Frame(frame_members_box, bg=self.COLOR_CARD, padx=14, pady=10)
+        toolbar_members.pack(fill=tk.X)
+
+        self.lbl_selected_room_title = tk.Label(
+            toolbar_members,
+            text="Thành viên trong phòng: seminar-network-lab",
+            font=self.FONT_SECTION, fg=self.COLOR_TEXT, bg=self.COLOR_CARD
+        )
+        self.lbl_selected_room_title.pack(side=tk.LEFT)
+
+        btn_whisper_member = ttk.Button(toolbar_members, text="Gửi tin riêng", style="Secondary.TButton", command=self.on_whisper_client)
+        btn_whisper_member.pack(side=tk.RIGHT, padx=4)
+
+        btn_mute_member = ttk.Button(toolbar_members, text="Bật/Tắt chat", style="Secondary.TButton", command=self.on_toggle_mute_client)
+        btn_mute_member.pack(side=tk.RIGHT, padx=4)
+
+        btn_kick_member = ttk.Button(toolbar_members, text="Kích khỏi phòng", style="Danger.TButton", command=self.on_kick_client)
+        btn_kick_member.pack(side=tk.RIGHT, padx=4)
+
+        # Bảng Treeview thành viên trong phòng
+        tree_members_container = tk.Frame(frame_members_box, bg=self.COLOR_CARD)
+        tree_members_container.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
+
+        columns_member = ("id", "fullname", "username", "type", "address", "joined_at", "msg_count", "mute_status")
+        self.tree_members = ttk.Treeview(tree_members_container, columns=columns_member, show="headings", selectmode="browse")
+
+        self.tree_members.heading("id", text="ID")
+        self.tree_members.heading("fullname", text="Tên hiển thị")
+        self.tree_members.heading("username", text="Tài khoản")
+        self.tree_members.heading("type", text="Nền tảng")
+        self.tree_members.heading("address", text="Địa chỉ IP:Port")
+        self.tree_members.heading("joined_at", text="Thời điểm vào")
+        self.tree_members.heading("msg_count", text="Tin nhắn")
+        self.tree_members.heading("mute_status", text="Quyền chat")
+
+        self.tree_members.column("id", width=60, anchor=tk.CENTER)
+        self.tree_members.column("fullname", width=180, anchor=tk.W)
+        self.tree_members.column("username", width=130, anchor=tk.W)
+        self.tree_members.column("type", width=130, anchor=tk.CENTER)
+        self.tree_members.column("address", width=170, anchor=tk.CENTER)
+        self.tree_members.column("joined_at", width=120, anchor=tk.CENTER)
+        self.tree_members.column("msg_count", width=85, anchor=tk.CENTER)
+        self.tree_members.column("mute_status", width=120, anchor=tk.CENTER)
+
+        sb_members = ttk.Scrollbar(tree_members_container, orient=tk.VERTICAL, command=self.tree_members.yview)
+        self.tree_members.configure(yscrollcommand=sb_members.set)
+
+        self.tree_members.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        sb_members.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Nhãn thông báo trống rõ ràng, tương phản tốt khi không có thành viên
+        self.lbl_members_empty = tk.Label(
+            self.tree_members,
+            text="Chưa có thành viên nào tham gia phòng này",
+            font=self.FONT_BODY,
+            fg=self.COLOR_MUTED,
+            bg=self.COLOR_CARD
+        )
+
+    # ─────────────────────────────────────────────────────────────────
+    # TAB 2: TOÀN BỘ KẾT NỐI CLIENT (ALL CONNECTED CLIENTS)
+    # ─────────────────────────────────────────────────────────────────
+    def _build_clients_tab(self):
+        card = tk.Frame(
+            self.tab_clients, bg=self.COLOR_CARD, bd=1, relief=tk.SOLID,
+            highlightbackground=self.COLOR_BORDER, highlightthickness=1
+        )
+        card.pack(fill=tk.BOTH, expand=True)
+
+        toolbar = tk.Frame(card, bg=self.COLOR_CARD, padx=14, pady=10)
+        toolbar.pack(fill=tk.X)
+
+        tk.Label(
+            toolbar, text="Danh sách Client kết nối máy chủ",
+            font=self.FONT_SECTION, fg=self.COLOR_TEXT, bg=self.COLOR_CARD
+        ).pack(side=tk.LEFT)
+
+        ttk.Button(toolbar, text="Làm mới", style="Secondary.TButton", command=self.refresh_all_clients).pack(side=tk.RIGHT, padx=4)
+        ttk.Button(toolbar, text="Kích kết nối", style="Danger.TButton", command=self.on_kick_from_all_tab).pack(side=tk.RIGHT, padx=4)
+        ttk.Button(toolbar, text="Bật/Tắt chat", style="Secondary.TButton", command=self.on_mute_from_all_tab).pack(side=tk.RIGHT, padx=4)
+
+        tree_box = tk.Frame(card, bg=self.COLOR_CARD)
+        tree_box.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
+
+        columns = ("id", "username", "fullname", "room", "type", "address", "joined_at", "msg_count", "status")
+        self.tree_all_clients = ttk.Treeview(tree_box, columns=columns, show="headings", selectmode="browse")
+
+        self.tree_all_clients.heading("id", text="ID")
+        self.tree_all_clients.heading("username", text="Tài khoản")
+        self.tree_all_clients.heading("fullname", text="Họ và tên")
+        self.tree_all_clients.heading("room", text="Phòng tham gia")
+        self.tree_all_clients.heading("type", text="Loại kết nối")
+        self.tree_all_clients.heading("address", text="Địa chỉ IP:Port")
+        self.tree_all_clients.heading("joined_at", text="Kết nối lúc")
+        self.tree_all_clients.heading("msg_count", text="Tin nhắn")
+        self.tree_all_clients.heading("status", text="Trạng thái")
+
+        self.tree_all_clients.column("id", width=60, anchor=tk.CENTER)
+        self.tree_all_clients.column("username", width=130, anchor=tk.W)
+        self.tree_all_clients.column("fullname", width=180, anchor=tk.W)
+        self.tree_all_clients.column("room", width=160, anchor=tk.CENTER)
+        self.tree_all_clients.column("type", width=130, anchor=tk.CENTER)
+        self.tree_all_clients.column("address", width=170, anchor=tk.CENTER)
+        self.tree_all_clients.column("joined_at", width=120, anchor=tk.CENTER)
+        self.tree_all_clients.column("msg_count", width=85, anchor=tk.CENTER)
+        self.tree_all_clients.column("status", width=110, anchor=tk.CENTER)
+
+        sb = ttk.Scrollbar(tree_box, orient=tk.VERTICAL, command=self.tree_all_clients.yview)
+        self.tree_all_clients.configure(yscrollcommand=sb.set)
+
+        self.tree_all_clients.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        sb.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.lbl_clients_empty = tk.Label(
+            self.tree_all_clients,
+            text="Chưa có client nào kết nối tới máy chủ",
+            font=self.FONT_BODY,
+            fg=self.COLOR_MUTED,
+            bg=self.COLOR_CARD
+        )
+
+    # ─────────────────────────────────────────────────────────────────
+    # TAB 3: PHÁT THÔNG BÁO HỆ THỐNG (BROADCAST ANNOUNCEMENT)
+    # ─────────────────────────────────────────────────────────────────
+    def _build_broadcast_tab(self):
+        card = tk.Frame(
+            self.tab_broadcast, bg=self.COLOR_CARD, bd=1, relief=tk.SOLID,
+            highlightbackground=self.COLOR_BORDER, highlightthickness=1, padx=24, pady=20
+        )
+        card.pack(fill=tk.BOTH, expand=True)
+
+        tk.Label(
+            card, text="Phát thông báo hệ thống",
+            font=self.FONT_SECTION, fg=self.COLOR_TEXT, bg=self.COLOR_CARD
         ).pack(anchor=tk.W, pady=(0, 4))
 
-        send_row = tk.Frame(broadcast_box, bg="#F8FAFC")
-        send_row.pack(fill=tk.X)
+        tk.Label(
+            card, text="Thông báo sẽ được gửi tức thì đến các client trong phạm vi đã chọn.",
+            font=self.FONT_SUB, fg=self.COLOR_MUTED, bg=self.COLOR_CARD
+        ).pack(anchor=tk.W, pady=(0, 16))
 
-        self.entry_broadcast = ttk.Entry(send_row, style="Custom.TEntry")
-        self.entry_broadcast.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
-        self.entry_broadcast.bind("<Return>", lambda e: self.action_broadcast())
+        target_row = tk.Frame(card, bg=self.COLOR_CARD)
+        target_row.pack(fill=tk.X, pady=(0, 14))
 
-        self.btn_broadcast = ttk.Button(
-            send_row,
-            text="🚀 Gửi Tới Tất Cả",
-            style="Primary.TButton",
-            command=self.action_broadcast
+        tk.Label(target_row, text="Phạm vi phát thông báo:", font=self.FONT_BODY_BOLD, bg=self.COLOR_CARD, fg=self.COLOR_TEXT).pack(side=tk.LEFT, padx=(0, 12))
+        self.combo_broadcast_target = ttk.Combobox(target_row, width=48, state="readonly", style="TCombobox")
+        self.combo_broadcast_target.pack(side=tk.LEFT)
+        self.combo_broadcast_target["values"] = ["Toàn bộ hệ thống (Tất cả các phòng)"]
+        self.combo_broadcast_target.current(0)
+
+        tk.Label(card, text="Nội dung thông báo:", font=self.FONT_BODY_BOLD, bg=self.COLOR_CARD, fg=self.COLOR_TEXT).pack(anchor=tk.W, pady=(4, 6))
+        self.txt_broadcast_msg = scrolledtext.ScrolledText(
+            card, height=7, font=self.FONT_BODY, relief=tk.SOLID, bd=1,
+            highlightbackground=self.COLOR_BORDER, highlightthickness=1
         )
-        self.btn_broadcast.pack(side=tk.RIGHT)
+        self.txt_broadcast_msg.pack(fill=tk.X, pady=(0, 14))
 
-    def _configure_log_tags(self):
-        """Cấu hình các thẻ định dạng màu sắc cho bảng nhật ký ScrolledText."""
-        self.txt_log.tag_configure("TIME", foreground="#94A3B8")
-        self.txt_log.tag_configure("INFO", foreground="#E2E8F0")
-        self.txt_log.tag_configure("CONNECT", foreground="#60A5FA", font=("Consolas", 9, "bold"))
-        self.txt_log.tag_configure("JOIN", foreground="#34D399", font=("Consolas", 9, "bold"))
-        self.txt_log.tag_configure("CHAT", foreground="#F8FAFC")
-        self.txt_log.tag_configure("PRIVATE", foreground="#C084FC", font=("Consolas", 9, "italic"))
-        self.txt_log.tag_configure("LEAVE", foreground="#FBBF24")
-        self.txt_log.tag_configure("SUCCESS", foreground="#4ADE80", font=("Consolas", 9, "bold"))
-        self.txt_log.tag_configure("WARNING", foreground="#F59E0B")
-        self.txt_log.tag_configure("ERROR", foreground="#F87171", font=("Consolas", 9, "bold"))
-        self.txt_log.tag_configure("SYSTEM", foreground="#38BDF8", font=("Consolas", 9, "bold"))
+        btn_row = tk.Frame(card, bg=self.COLOR_CARD)
+        btn_row.pack(fill=tk.X)
+
+        btn_send = ttk.Button(btn_row, text="Phát thông báo", style="Primary.TButton", command=self.on_send_broadcast)
+        btn_send.pack(side=tk.LEFT, padx=(0, 8))
+
+        btn_clear = ttk.Button(btn_row, text="Xóa nội dung", style="Secondary.TButton", command=lambda: self.txt_broadcast_msg.delete("1.0", tk.END))
+        btn_clear.pack(side=tk.LEFT)
+
+    # ─────────────────────────────────────────────────────────────────
+    # TAB 4: NHẬT KÝ MÁY CHỦ & GÓI TIN MẠNG (LIVE LOGS)
+    # ─────────────────────────────────────────────────────────────────
+    def _build_logs_tab(self):
+        card = tk.Frame(
+            self.tab_logs, bg=self.COLOR_CARD, bd=1, relief=tk.SOLID,
+            highlightbackground=self.COLOR_BORDER, highlightthickness=1, padx=14, pady=10
+        )
+        card.pack(fill=tk.BOTH, expand=True)
+
+        toolbar = tk.Frame(card, bg=self.COLOR_CARD)
+        toolbar.pack(fill=tk.X, pady=(0, 10))
+
+        tk.Label(
+            toolbar, text="Nhật ký máy chủ thời gian thực",
+            font=self.FONT_SECTION, fg=self.COLOR_TEXT, bg=self.COLOR_CARD
+        ).pack(side=tk.LEFT)
+
+        ttk.Button(toolbar, text="Xóa nhật ký", style="Secondary.TButton", command=self.clear_logs).pack(side=tk.RIGHT, padx=4)
+        ttk.Button(toolbar, text="Lưu ra file", style="Secondary.TButton", command=self.export_logs).pack(side=tk.RIGHT, padx=4)
+
+        # ScrolledText hiển thị logs tô màu cú pháp
+        self.txt_logs = scrolledtext.ScrolledText(
+            card, bg="#0F172A", fg="#F8FAFC", font=self.FONT_LOG,
+            insertbackground="#FFFFFF", relief=tk.FLAT, bd=0
+        )
+        self.txt_logs.pack(fill=tk.BOTH, expand=True)
+
+        # Định dạng màu cho các Tag log
+        self.txt_logs.tag_config("SUCCESS", foreground="#22C55E")  # Xanh lục
+        self.txt_logs.tag_config("INFO", foreground="#38BDF8")     # Xanh dương nhạt
+        self.txt_logs.tag_config("JOIN", foreground="#14B8A6")     # Teal
+        self.txt_logs.tag_config("LEAVE", foreground="#94A3B8")    # Slate xám
+        self.txt_logs.tag_config("CHAT", foreground="#A78BFA")     # Tím pastel
+        self.txt_logs.tag_config("FILE", foreground="#F472B6")     # Hồng
+        self.txt_logs.tag_config("ROOM", foreground="#FBBF24")     # Vàng hổ phách
+        self.txt_logs.tag_config("WARNING", foreground="#F97316")  # Cam
+        self.txt_logs.tag_config("ERROR", foreground="#EF4444")    # Đỏ
+        self.txt_logs.tag_config("SYSTEM", foreground="#CBD5E1")   # Xám sáng
 
     def _build_status_bar(self):
-        """Thanh trạng thái chân trang."""
-        status_bar = tk.Frame(self.root, bg="#E2E8F0", height=26, padx=14)
+        """Thanh trạng thái dưới cùng: Tối giản, thanh mảnh, chữ 12-13px rõ nét."""
+        sep = tk.Frame(self.root, bg=self.COLOR_BORDER_LIGHT, height=1)
+        sep.pack(fill=tk.X, side=tk.BOTTOM)
+
+        status_bar = tk.Frame(self.root, bg="#F9FAFB", height=30, padx=18)
         status_bar.pack(fill=tk.X, side=tk.BOTTOM)
         status_bar.pack_propagate(False)
 
-        self.lbl_status_msg = tk.Label(
+        self.lbl_status_left = tk.Label(
             status_bar,
-            text="🟢 Sẵn sàng khởi động máy chủ.",
-            font=("Segoe UI", 8),
-            fg=self.COLOR_TEXT,
-            bg="#E2E8F0"
+            text=f"Asyncio Dual Hub Engine • Cổng dịch vụ: {WEB_PORT} (Hub/Desktop) & {TCP_PORT} (TCP Socket)",
+            font=self.FONT_SUB, bg="#F9FAFB", fg=self.COLOR_MUTED
         )
-        self.lbl_status_msg.pack(side=tk.LEFT)
+        self.lbl_status_left.pack(side=tk.LEFT)
 
-        lbl_tech = tk.Label(
+        self.lbl_status_right = tk.Label(
             status_bar,
-            text="Socket TCP/IP • Multithreading • Python 3",
-            font=("Segoe UI", 8),
-            fg=self.COLOR_MUTED,
-            bg="#E2E8F0"
+            text=f"Mạng LAN: {self.lan_ip} • Trạng thái: Sẵn sàng",
+            font=self.FONT_SUB, bg="#F9FAFB", fg=self.COLOR_MUTED
         )
-        lbl_tech.pack(side=tk.RIGHT)
+        self.lbl_status_right.pack(side=tk.RIGHT)
 
-    def _process_events(self):
-        """Rút các sự kiện từ background threads và cập nhật lên UI chính."""
+    # ─────────────────────────────────────────────────────────────────
+    # QUẢN LÝ TIẾN TRÌNH SERVER & ASYNCIO THREAD
+    # ─────────────────────────────────────────────────────────────────
+    def _free_port(self, port: int):
+        """Giải phóng cổng mạng nếu đang bị tiến trình khác chiếm dụng."""
         try:
-            while True:
-                event_name, data = self.event_queue.get_nowait()
+            if platform.system() == "Windows":
+                out = subprocess.check_output(f'netstat -ano | findstr :{port}', shell=True).decode()
+                pids = set()
+                for line in out.strip().splitlines():
+                    parts = line.strip().split()
+                    if len(parts) >= 5 and f":{port}" in parts[1]:
+                        pids.add(parts[-1])
+                for pid in pids:
+                    subprocess.run(f'taskkill /F /PID {pid}', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            else:
+                subprocess.run(f'lsof -ti :{port} | xargs -r kill -9 2>/dev/null', shell=True)
+            time.sleep(0.3)
+            return True
+        except Exception:
+            return False
 
-                if event_name == 'status':
-                    is_active, host, port = data
-                    self._handle_status_update(is_active, host, port)
+    def toggle_server(self):
+        if self.is_running:
+            self.stop_server()
+        else:
+            self.start_server()
 
-                elif event_name == 'log':
-                    timestamp, message, tag = data
-                    self._append_log(timestamp, message, tag)
+    def start_server(self):
+        if self.is_running:
+            return
 
-                elif event_name == 'client_connect':
-                    self._handle_client_connect(data)
+        self.is_running = True
+        self.btn_toggle_server.configure(text="Đang bật...", state=tk.DISABLED)
 
-                elif event_name == 'client_join':
-                    self._handle_client_join(data)
+        # Chạy máy chủ trong một luồng riêng biệt
+        self.server_thread = threading.Thread(target=self._server_worker, daemon=True)
+        self.server_thread.start()
 
-                elif event_name == 'client_update':
-                    self._handle_client_update(data)
+    def _server_worker(self):
+        """Worker thread chạy asyncio event loop cho Dual Hub Server."""
+        self.server_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.server_loop)
+        self.stop_event = asyncio.Event()
 
-                elif event_name == 'client_leave':
-                    self._handle_client_leave(data)
+        self.hub = DualChatHub()
 
-                elif event_name == 'message':
-                    self._refresh_kpis()
+        # Đăng ký callback thread-safe vào event_queue
+        def _on_log(log_entry):
+            self.event_queue.put(('LOG', log_entry))
 
-        except queue.Empty:
+        def _on_state_change(*args):
+            self.event_queue.put(('STATE_CHANGE', None))
+
+        self.hub.on_log = _on_log
+        self.hub.on_state_change = _on_state_change
+
+        def _on_ready(hub, success, error):
+            self.event_queue.put(('SERVER_READY', (success, error)))
+
+        try:
+            h_port = int(self.hub_port_var.get().strip() or WEB_PORT)
+            t_port = int(self.tcp_port_var.get().strip() or TCP_PORT)
+            host_val = self.host_var.get().strip() or HOST
+
+            self.server_loop.run_until_complete(
+                start_dual_server(
+                    host=host_val,
+                    web_port=h_port,
+                    tcp_port=t_port,
+                    hub=self.hub,
+                    stop_event=self.stop_event,
+                    on_ready=_on_ready
+                )
+            )
+        except Exception as e:
+            self.event_queue.put(('SERVER_ERROR', str(e)))
+        finally:
+            try:
+                self.server_loop.close()
+            except Exception:
+                pass
+            self.event_queue.put(('SERVER_STOPPED', None))
+
+    def stop_server(self):
+        if not self.is_running:
+            return
+        self.btn_toggle_server.configure(text="Đang dừng...", state=tk.DISABLED)
+        if self.server_loop and self.stop_event:
+            self.server_loop.call_soon_threadsafe(self.stop_event.set)
+
+    def run_coro(self, coro):
+        """Chạy một coroutine trên server event loop một cách thread-safe."""
+        if self.server_loop and self.server_loop.is_running():
+            return asyncio.run_coroutine_threadsafe(coro, self.server_loop)
+        try:
+            coro.close()
+        except Exception:
+            pass
+        return None
+
+    # ─────────────────────────────────────────────────────────────────
+    # XỬ LÝ SỰ KIỆN TỪ BACKGROUND THREAD (THREAD-SAFE)
+    # ─────────────────────────────────────────────────────────────────
+    def _process_events(self):
+        try:
+            while not self.event_queue.empty():
+                evt_type, data = self.event_queue.get_nowait()
+
+                if evt_type == 'SERVER_READY':
+                    success, error = data
+                    if success:
+                        self.is_running = True
+                        self.start_time = datetime.now()
+                        self.lbl_server_status_badge.configure(
+                            text="● Đang hoạt động",
+                            fg=self.COLOR_SUCCESS,
+                            bg=self.COLOR_CARD
+                        )
+                        self.btn_toggle_server.configure(
+                            text="Dừng máy chủ",
+                            style="Danger.TButton",
+                            state=tk.NORMAL
+                        )
+                        self.lbl_status_right.configure(
+                            text=f"Mạng LAN: {self.lan_ip} • Trạng thái: Trực tuyến"
+                        )
+                        self.refresh_all_data()
+                    else:
+                        self.is_running = False
+                        self.lbl_server_status_badge.configure(
+                            text="● Lỗi khởi động",
+                            fg=self.COLOR_DANGER,
+                            bg=self.COLOR_CARD
+                        )
+                        self.btn_toggle_server.configure(
+                            text="Bật máy chủ",
+                            style="Success.TButton",
+                            state=tk.NORMAL
+                        )
+                        if "chiếm dụng" in str(error):
+                            ask = messagebox.askyesno(
+                                "Cổng Đang Bị Chiếm Dụng",
+                                f"Không thể bật máy chủ:\n{error}\n\n"
+                                "Bạn có muốn tự động giải phóng cổng này và bật lại Server ngay không?"
+                            )
+                            if ask:
+                                h_port = int(self.hub_port_var.get().strip() or WEB_PORT)
+                                t_port = int(self.tcp_port_var.get().strip() or TCP_PORT)
+                                self._free_port(h_port)
+                                self._free_port(t_port)
+                                self.root.after(300, self.start_server)
+                        else:
+                            messagebox.showerror("Lỗi Khởi Động Máy Chủ", f"Không thể bật máy chủ:\n{error}")
+
+                elif evt_type == 'SERVER_STOPPED':
+                    self.is_running = False
+                    self.start_time = None
+                    self.lbl_server_status_badge.configure(
+                        text="● Đã dừng",
+                        fg=self.COLOR_DANGER,
+                        bg=self.COLOR_CARD
+                    )
+                    self.btn_toggle_server.configure(
+                        text="Bật máy chủ",
+                        style="Success.TButton",
+                        state=tk.NORMAL
+                    )
+                    self.lbl_uptime.configure(text="Thời gian chạy: 00:00:00")
+                    self.lbl_status_right.configure(
+                        text=f"Mạng LAN: {self.lan_ip} • Trạng thái: Đã dừng"
+                    )
+                    self.refresh_all_data()
+
+                elif evt_type == 'LOG':
+                    self._append_log_entry(data)
+
+                elif evt_type == 'STATE_CHANGE':
+                    self.refresh_all_data()
+
+        except Exception:
             pass
 
-        finally:
-            self.root.after(40, self._process_events)
+        self.root.after(50, self._process_events)
 
-    def _update_uptime_tick(self):
-        """Cập nhật đồng hồ đo thời gian chạy của Server mỗi giây."""
+    def _append_log_entry(self, entry):
+        ts = entry.get('timestamp', '')
+        tag = entry.get('tag', 'INFO')
+        msg = entry.get('message', '')
+
+        line = f"[{ts}] [{tag:7s}] {msg}\n"
+        self.txt_logs.insert(tk.END, line, tag)
+        self.txt_logs.see(tk.END)
+
+    def _update_clock_tick(self):
         if self.is_running and self.start_time:
-            elapsed = int(time.time() - self.start_time)
-            hrs = elapsed // 3600
-            mins = (elapsed % 3600) // 60
-            secs = elapsed % 60
-            self.lbl_uptime.config(text=f"⏱️ Uptime: {hrs:02d}:{mins:02d}:{secs:02d}")
-        else:
-            self.lbl_uptime.config(text="⏱️ Uptime: 00:00:00")
+            delta = datetime.now() - self.start_time
+            seconds = int(delta.total_seconds())
+            h = seconds // 3600
+            m = (seconds % 3600) // 60
+            s = seconds % 60
+            self.lbl_uptime.configure(text=f"Thời gian chạy: {h:02d}:{m:02d}:{s:02d}")
 
-        self.root.after(1000, self._update_uptime_tick)
+            # Cập nhật KPI thống kê định kỳ
+            if self.hub:
+                stats = self.hub.get_stats()
+                self.lbl_kpi_online.configure(text=str(stats.get('online_total', 0)))
+                self.lbl_kpi_messages.configure(text=str(stats.get('total_messages', 0)))
 
-    def _handle_client_connect(self, client_data):
-        """Xử lý khi một Client vừa kết nối TCP (đã được cấp Client ID)."""
-        cid = client_data['id']
-        self.client_records[cid] = client_data
+                b = stats.get('bytes_transferred', 0)
+                if b < 1024:
+                    traffic_str = f"{b} B"
+                elif b < 1024 * 1024:
+                    traffic_str = f"{b / 1024:.1f} KB"
+                else:
+                    traffic_str = f"{b / (1024 * 1024):.2f} MB"
+                self.lbl_kpi_traffic.configure(text=traffic_str)
 
-        # Thêm dòng mới vào Treeview
-        display_id = f"#{cid:02d}" if cid < 100 else f"#{cid}"
-        self.client_tree.insert(
-            "",
-            tk.END,
-            iid=str(cid),
-            values=(
-                display_id,
-                client_data['username'],
-                client_data['address'],
-                client_data['fileno'],
-                client_data['connected_at'],
-                client_data['status'],
-                client_data['msg_count']
-            ),
-            tags=("pending",)
-        )
-        self._refresh_kpis()
+        self.root.after(1000, self._update_clock_tick)
 
-    def _handle_client_join(self, client_data):
-        """Xử lý khi Client đã gửi thành công lệnh JOIN (xác nhận username)."""
-        cid = client_data['id']
-        self.client_records[cid] = client_data
+    # ─────────────────────────────────────────────────────────────────
+    # ĐỒNG BỘ DỮ LIỆU & REFRESH GIAO DIỆN
+    # ─────────────────────────────────────────────────────────────────
+    def refresh_all_data(self):
+        self.refresh_rooms_list()
+        self.refresh_selected_room_members()
+        self.refresh_all_clients()
+        self.update_broadcast_combobox()
 
-        display_id = f"#{cid:02d}" if cid < 100 else f"#{cid}"
-        if self.client_tree.exists(str(cid)):
-            self.client_tree.item(
-                str(cid),
-                values=(
-                    display_id,
-                    client_data['username'],
-                    client_data['address'],
-                    client_data['fileno'],
-                    client_data['connected_at'],
-                    client_data['status'],
-                    client_data['msg_count']
-                ),
-                tags=("online",)
-            )
-        else:
-            self.client_tree.insert(
-                "",
-                tk.END,
-                iid=str(cid),
-                values=(
-                    display_id,
-                    client_data['username'],
-                    client_data['address'],
-                    client_data['fileno'],
-                    client_data['connected_at'],
-                    client_data['status'],
-                    client_data['msg_count']
-                ),
-                tags=("online",)
+    def refresh_rooms_list(self):
+        """Làm mới danh sách phòng họp trên Treeview."""
+        selected_code = None
+        sel = self.tree_rooms.selection()
+        if sel:
+            selected_code = self.tree_rooms.item(sel[0])['values'][0]
+
+        # Xóa các dòng cũ
+        for item in self.tree_rooms.get_children():
+            self.tree_rooms.delete(item)
+
+        rooms = room_manager.rooms.values()
+        self.lbl_kpi_rooms.configure(text=str(len(rooms)))
+
+        target_item = None
+        for r in rooms:
+            status_lock = "Khóa" if r.is_locked else "Mở"
+            status_chat = "Bật" if r.allow_public_chat else "Khóa"
+            created_str = r.created_at.strftime("%H:%M:%S")
+
+            item_id = self.tree_rooms.insert(
+                "", tk.END,
+                values=(r.code, r.title, r.host_fullname or r.host_username, r.online_count, status_lock, status_chat, created_str)
             )
 
-        self._refresh_kpis()
-        self._update_selected_action_bar()
+            if selected_code and r.code == selected_code:
+                target_item = item_id
+            elif not selected_code and r.code == self.selected_room_code:
+                target_item = item_id
 
-    def _handle_client_update(self, client_data):
-        """Cập nhật số tin nhắn hoặc thông tin của Client."""
-        cid = client_data['id']
-        self.client_records[cid] = client_data
+        if target_item:
+            self.tree_rooms.selection_set(target_item)
+            self.tree_rooms.focus(target_item)
+        elif self.tree_rooms.get_children():
+            first_item = self.tree_rooms.get_children()[0]
+            self.tree_rooms.selection_set(first_item)
+            self.tree_rooms.focus(first_item)
 
-        display_id = f"#{cid:02d}" if cid < 100 else f"#{cid}"
-        if self.client_tree.exists(str(cid)):
-            tag = "online" if client_data.get('is_active') else "disconnected"
-            self.client_tree.item(
-                str(cid),
-                values=(
-                    display_id,
-                    client_data['username'],
-                    client_data['address'],
-                    client_data['fileno'],
-                    client_data['connected_at'],
-                    client_data['status'],
-                    client_data['msg_count']
-                ),
-                tags=(tag,)
-            )
-        self._refresh_kpis()
+    def on_room_select(self, event):
+        sel = self.tree_rooms.selection()
+        if not sel:
+            return
+        values = self.tree_rooms.item(sel[0])['values']
+        if values:
+            self.selected_room_code = str(values[0])
+            self.lbl_selected_room_title.configure(text=f"Thành viên trong phòng: {self.selected_room_code}")
+            self.refresh_selected_room_members()
 
-    def _handle_client_leave(self, client_data):
-        """Xử lý khi Client ngắt kết nối."""
-        cid = client_data['id']
-        self.client_records[cid] = client_data
+    def refresh_selected_room_members(self):
+        """Cập nhật bảng thành viên thuộc phòng đang chọn."""
+        for item in self.tree_members.get_children():
+            self.tree_members.delete(item)
 
-        display_id = f"#{cid:02d}" if cid < 100 else f"#{cid}"
-        if self.client_tree.exists(str(cid)):
-            self.client_tree.item(
-                str(cid),
-                values=(
-                    display_id,
-                    client_data['username'],
-                    client_data['address'],
-                    client_data['fileno'],
-                    client_data['connected_at'],
-                    client_data['status'],
-                    client_data['msg_count']
-                ),
-                tags=("disconnected",)
-            )
+        room = room_manager.get_room(self.selected_room_code)
+        if not room:
+            self.lbl_members_empty.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+            return
 
-        self._refresh_kpis()
-        self._update_selected_action_bar()
-
-    def _filter_client_tree(self):
-        """Tìm kiếm lọc danh sách Client theo ID hoặc Username."""
-        query = self.entry_search_client.get().strip().lower()
-
-        for cid, data in self.client_records.items():
-            iid = str(cid)
-            if not self.client_tree.exists(iid):
+        member_count = 0
+        for c in room.clients:
+            if not getattr(c, 'is_active', True):
                 continue
+            member_count += 1
+            cid = c.id
+            fullname = getattr(c, 'fullname', c.username) or "(Chờ JOIN)"
+            username = getattr(c, 'username', "(Chờ JOIN)")
+            ctype = "Desktop App" if c.client_type == 'websocket' else "TCP Socket"
+            addr = getattr(c, 'address', f"{c.ip}:{c.port}")
+            joined = c.connected_at.strftime("%H:%M:%S")
+            msgs = getattr(c, 'msg_count', 0)
+            mute = "Tắt chat" if getattr(c, 'is_muted', False) else "Được chat"
 
-            id_str = f"#{cid}".lower()
-            name_str = (data.get('username') or "").lower()
-            addr_str = (data.get('address') or "").lower()
-
-            if not query or query in id_str or query in name_str or query in addr_str or query in str(cid):
-                # Hiển thị lại nếu khớp
-                self.client_tree.reattach(iid, "", tk.END)
-            else:
-                self.client_tree.detach(iid)
-
-    def _on_client_selected(self, event):
-        """Sự kiện click chọn một dòng Client trên Treeview."""
-        selected = self.client_tree.selection()
-        if not selected:
-            self.selected_client_id = None
-        else:
-            try:
-                self.selected_client_id = int(selected[0])
-            except ValueError:
-                self.selected_client_id = None
-
-        self._update_selected_action_bar()
-
-    def _update_selected_action_bar(self):
-        """Cập nhật trạng thái các nút bấm thao tác dựa theo Client đang chọn."""
-        if not self.selected_client_id or self.selected_client_id not in self.client_records:
-            self.lbl_selected_info.config(
-                text="👉 Hãy chọn một Client từ bảng để thao tác",
-                fg=self.COLOR_MUTED
+            self.tree_members.insert(
+                "", tk.END,
+                values=(cid, fullname, username, ctype, addr, joined, msgs, mute)
             )
-            self.btn_kick.config(state=tk.DISABLED)
-            self.btn_pm.config(state=tk.DISABLED)
-            self.btn_copy_info.config(state=tk.DISABLED)
+
+        if member_count == 0:
+            self.lbl_members_empty.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+        else:
+            self.lbl_members_empty.place_forget()
+
+    def refresh_all_clients(self):
+        """Làm mới danh sách toàn bộ Client đang kết nối."""
+        for item in self.tree_all_clients.get_children():
+            self.tree_all_clients.delete(item)
+
+        if not self.hub:
+            self.lbl_clients_empty.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
             return
 
-        client = self.client_records[self.selected_client_id]
-        cid = client['id']
-        uname = client['username']
-        addr = client['address']
-        is_active = client.get('is_active', False)
+        client_count = 0
+        for cid, c in self.hub.clients.items():
+            if not c.is_active:
+                continue
+            client_count += 1
+            username = c.username or "(Chờ JOIN)"
+            fullname = c.fullname or username
+            room = getattr(c, 'room_code', 'seminar-network-lab')
+            ctype = "Desktop App" if c.client_type == 'websocket' else "TCP Socket"
+            addr = getattr(c, 'address', f"{c.ip}:{c.port}")
+            joined = c.connected_at.strftime("%H:%M:%S")
+            msgs = c.msg_count
+            status = "Trực tuyến"
 
-        status_text = f"Đang chọn: Client ID #{cid} • '{uname}' ({addr})"
-        self.lbl_selected_info.config(text=status_text, fg=self.COLOR_PRIMARY)
+            self.tree_all_clients.insert(
+                "", tk.END,
+                values=(cid, username, fullname, room, ctype, addr, joined, msgs, status)
+            )
 
-        # Cho phép Kick và PM nếu Client vẫn đang kết nối
-        if is_active and self.is_running:
-            self.btn_kick.config(state=tk.NORMAL)
-            self.btn_pm.config(state=tk.NORMAL)
+        if client_count == 0:
+            self.lbl_clients_empty.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
         else:
-            self.btn_kick.config(state=tk.DISABLED)
-            self.btn_pm.config(state=tk.DISABLED)
+            self.lbl_clients_empty.place_forget()
 
-        self.btn_copy_info.config(state=tk.NORMAL)
+    def update_broadcast_combobox(self):
+        """Cập nhật danh sách các phòng vào mục tiêu broadcast."""
+        rooms = list(room_manager.rooms.keys())
+        values = ["Toàn bộ hệ thống (Tất cả các phòng)"]
+        for r_code in rooms:
+            r = room_manager.get_room(r_code)
+            title = r.title if r else r_code
+            values.append(f"Phòng: {r_code} - {title}")
 
-    def _refresh_kpis(self):
-        """Cập nhật các số liệu thống kê ở hàng thẻ trên cùng."""
-        if self.server:
-            stats = self.server.get_stats()
-            self.lbl_val_online.config(text=str(stats['online']))
-            self.lbl_val_total_conns.config(text=str(stats['total_connections']))
-            self.lbl_val_total_msgs.config(text=str(stats['total_messages']))
+        current = self.combo_broadcast_target.get()
+        self.combo_broadcast_target["values"] = values
+        if current in values:
+            self.combo_broadcast_target.set(current)
         else:
-            self.lbl_val_online.config(text="0")
+            self.combo_broadcast_target.current(0)
 
-    def _append_log(self, timestamp, message, tag):
-        """Ghi dòng nhật ký mới vào khung văn bản với màu sắc tương ứng."""
-        self.txt_log.config(state=tk.NORMAL)
+    # ─────────────────────────────────────────────────────────────────
+    # THAO TÁC PHÒNG HỌP (ROOM CONTROLS)
+    # ─────────────────────────────────────────────────────────────────
+    def open_create_room_modal(self):
+        """Mở hộp thoại tạo cuộc họp mới."""
+        dlg = tk.Toplevel(self.root)
+        dlg.title("Tạo cuộc họp mới")
+        dlg.geometry("500x340")
+        dlg.resizable(False, False)
+        dlg.configure(bg=self.COLOR_APP_BG)
+        dlg.transient(self.root)
+        dlg.grab_set()
 
-        # In thời gian
-        self.txt_log.insert(tk.END, f"[{timestamp}] ", "TIME")
+        tk.Label(
+            dlg, text="Tạo phòng họp trực tuyến",
+            font=self.FONT_SECTION, fg=self.COLOR_TEXT, bg=self.COLOR_APP_BG
+        ).pack(anchor=tk.W, padx=22, pady=(18, 8))
 
-        # In nội dung với tag
-        self.txt_log.insert(tk.END, f"{message}\n", tag)
+        frame_fields = tk.Frame(dlg, bg=self.COLOR_APP_BG, padx=22)
+        frame_fields.pack(fill=tk.BOTH, expand=True)
 
-        if self.auto_scroll_var.get():
-            self.txt_log.see(tk.END)
+        tk.Label(frame_fields, text="Tên cuộc họp:", font=self.FONT_BODY, bg=self.COLOR_APP_BG, fg=self.COLOR_TEXT).pack(anchor=tk.W, pady=(4, 2))
+        ent_title = ttk.Entry(frame_fields, width=42, style="TEntry")
+        ent_title.pack(fill=tk.X, pady=(0, 8))
+        ent_title.insert(0, "Hội Thảo Chuyên Đề Seminar")
 
-        self.txt_log.config(state=tk.DISABLED)
+        tk.Label(frame_fields, text="Chủ trì (Host):", font=self.FONT_BODY, bg=self.COLOR_APP_BG, fg=self.COLOR_TEXT).pack(anchor=tk.W, pady=(4, 2))
+        ent_host = ttk.Entry(frame_fields, width=42, style="TEntry")
+        ent_host.pack(fill=tk.X, pady=(0, 8))
+        ent_host.insert(0, "Ban Quản Trị")
 
-    def action_clear_log(self):
-        """Xóa trắng nội dung nhật ký hiện tại."""
-        self.txt_log.config(state=tk.NORMAL)
-        self.txt_log.delete("1.0", tk.END)
-        self.txt_log.config(state=tk.DISABLED)
+        tk.Label(frame_fields, text="Mã phòng (để trống để tự sinh ngẫu nhiên):", font=self.FONT_BODY, bg=self.COLOR_APP_BG, fg=self.COLOR_TEXT).pack(anchor=tk.W, pady=(4, 2))
+        ent_code = ttk.Entry(frame_fields, width=42, style="TEntry")
+        ent_code.pack(fill=tk.X, pady=(0, 14))
 
-    def action_save_log(self):
-        """Xuất nội dung nhật ký máy chủ ra file văn bản (.txt)."""
-        content = self.txt_log.get("1.0", tk.END).strip()
-        if not content:
-            messagebox.showinfo("Thông báo", "Nhật ký hiện đang trống.")
+        def do_create():
+            title = ent_title.get().strip() or "Cuộc Họp Mới"
+            host = ent_host.get().strip() or "Ban Quản Trị"
+            code = ent_code.get().strip().lower() or None
+
+            if self.hub:
+                self.run_coro(self.hub.create_room_admin(title=title, host_username="admin", host_fullname=host, custom_code=code))
+            else:
+                room_manager.create_room(title=title, host_username="admin", host_fullname=host, custom_code=code)
+                self.refresh_all_data()
+
+            dlg.destroy()
+            messagebox.showinfo("Thành Công", "Đã khởi tạo phòng họp mới thành công!")
+
+        btn_box = tk.Frame(dlg, bg=self.COLOR_APP_BG, padx=22, pady=14)
+        btn_box.pack(fill=tk.X)
+
+        ttk.Button(btn_box, text="Xác nhận tạo", style="Primary.TButton", command=do_create).pack(side=tk.RIGHT, padx=4)
+        ttk.Button(btn_box, text="Hủy", style="Secondary.TButton", command=dlg.destroy).pack(side=tk.RIGHT, padx=4)
+
+    def on_toggle_lock_room(self):
+        """Khóa hoặc mở khóa phòng đang chọn."""
+        if not self.selected_room_code:
+            messagebox.showwarning("Cảnh Báo", "Vui lòng chọn một phòng họp trong danh sách!")
             return
 
-        filename = filedialog.asksaveasfilename(
-            parent=self.root,
-            title="Lưu Nhật Ký Server",
-            defaultextension=".txt",
-            filetypes=[("Text Files (*.txt)", "*.txt"), ("All Files (*.*)", "*.*")],
-            initialfile=f"server_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        if self.hub:
+            self.run_coro(self.hub.admin_toggle_lock_room(self.selected_room_code))
+        else:
+            room = room_manager.get_room(self.selected_room_code)
+            if room:
+                room.is_locked = not room.is_locked
+                self.refresh_rooms_list()
+
+    def on_mute_room(self):
+        """Mute all các thành viên trong phòng đang chọn."""
+        if not self.selected_room_code:
+            messagebox.showwarning("Cảnh Báo", "Vui lòng chọn một phòng họp trong danh sách!")
+            return
+
+        if messagebox.askyesno("Xác Nhận", f"Bạn có chắc muốn tắt âm tất cả thành viên trong phòng '{self.selected_room_code}'?"):
+            if self.hub:
+                self.run_coro(self.hub.admin_mute_room(self.selected_room_code))
+
+    def on_disband_room(self):
+        """Giải tán / Đóng phòng đang chọn."""
+        if not self.selected_room_code:
+            messagebox.showwarning("Cảnh Báo", "Vui lòng chọn một phòng họp trong danh sách!")
+            return
+
+        if self.selected_room_code == 'seminar-network-lab':
+            messagebox.showinfo("Thông Báo", "Phòng 'seminar-network-lab' là phòng họp mặc định của hệ thống, không thể xóa.")
+            return
+
+        if messagebox.askyesno("Xác Nhận Đóng Phòng", f"Bạn có chắc chắn muốn giải tán và đóng phòng họp [{self.selected_room_code}]?"):
+            if self.hub:
+                self.run_coro(self.hub.admin_disband_room(self.selected_room_code))
+            else:
+                room_manager.delete_room(self.selected_room_code)
+                self.selected_room_code = "seminar-network-lab"
+                self.refresh_all_data()
+
+    # ─────────────────────────────────────────────────────────────────
+    # THAO TÁC THÀNH VIÊN (PARTICIPANT CONTROLS)
+    # ─────────────────────────────────────────────────────────────────
+    def _get_selected_member_id(self):
+        sel = self.tree_members.selection()
+        if not sel:
+            return None
+        values = self.tree_members.item(sel[0])['values']
+        return int(values[0]) if values else None
+
+    def on_toggle_mute_client(self):
+        cid = self._get_selected_member_id()
+        if not cid:
+            messagebox.showwarning("Cảnh Báo", "Vui lòng chọn một thành viên trong danh sách!")
+            return
+
+        if self.hub:
+            self.run_coro(self.hub.admin_toggle_mute_client(cid))
+
+    def on_kick_client(self):
+        cid = self._get_selected_member_id()
+        if not cid:
+            messagebox.showwarning("Cảnh Báo", "Vui lòng chọn một thành viên trong danh sách!")
+            return
+
+        if messagebox.askyesno("Xác Nhận Kích", f"Bạn có chắc chắn muốn ngắt kết nối Client #{cid} khỏi phòng?"):
+            if self.hub:
+                self.run_coro(self.hub.admin_kick(cid, reason="Quản trị viên ngắt kết nối."))
+
+    def on_whisper_client(self):
+        cid = self._get_selected_member_id()
+        if not cid:
+            messagebox.showwarning("Cảnh Báo", "Vui lòng chọn một thành viên trong danh sách!")
+            return
+
+        # Modal nhập tin nhắn riêng
+        dlg = tk.Toplevel(self.root)
+        dlg.title(f"Gửi tin nhắn riêng tới #{cid}")
+        dlg.geometry("480x280")
+        dlg.resizable(False, False)
+        dlg.configure(bg=self.COLOR_APP_BG)
+        dlg.transient(self.root)
+        dlg.grab_set()
+
+        tk.Label(
+            dlg, text=f"Tin nhắn riêng tới Client #{cid}:",
+            font=self.FONT_SECTION, bg=self.COLOR_APP_BG, fg=self.COLOR_TEXT
+        ).pack(anchor=tk.W, padx=22, pady=(18, 8))
+
+        ent_msg = scrolledtext.ScrolledText(
+            dlg, height=5, font=self.FONT_BODY, relief=tk.SOLID, bd=1,
+            highlightbackground=self.COLOR_BORDER, highlightthickness=1
         )
-        if filename:
+        ent_msg.pack(fill=tk.BOTH, expand=True, padx=22, pady=(0, 12))
+
+        def do_send():
+            txt = ent_msg.get("1.0", tk.END).strip()
+            if not txt:
+                return
+            if self.hub:
+                self.run_coro(self.hub.admin_whisper(cid, txt))
+            dlg.destroy()
+            messagebox.showinfo("Thành Công", f"Đã gửi tin nhắn riêng tới Client #{cid}!")
+
+        btn_box = tk.Frame(dlg, bg=self.COLOR_APP_BG, padx=22, pady=12)
+        btn_box.pack(fill=tk.X)
+        ttk.Button(btn_box, text="Gửi tin nhắn", style="Primary.TButton", command=do_send).pack(side=tk.RIGHT, padx=4)
+        ttk.Button(btn_box, text="Đóng", style="Secondary.TButton", command=dlg.destroy).pack(side=tk.RIGHT, padx=4)
+
+    def on_kick_from_all_tab(self):
+        sel = self.tree_all_clients.selection()
+        if not sel:
+            messagebox.showwarning("Cảnh Báo", "Vui lòng chọn một Client trong danh sách!")
+            return
+        cid = int(self.tree_all_clients.item(sel[0])['values'][0])
+        if messagebox.askyesno("Xác Nhận Kích", f"Bạn có chắc muốn ngắt kết nối Client #{cid}?"):
+            if self.hub:
+                self.run_coro(self.hub.admin_kick(cid, reason="Quản trị viên ngắt kết nối."))
+
+    def on_mute_from_all_tab(self):
+        sel = self.tree_all_clients.selection()
+        if not sel:
+            messagebox.showwarning("Cảnh Báo", "Vui lòng chọn một Client trong danh sách!")
+            return
+        cid = int(self.tree_all_clients.item(sel[0])['values'][0])
+        if self.hub:
+            self.run_coro(self.hub.admin_toggle_mute_client(cid))
+
+    # ─────────────────────────────────────────────────────────────────
+    # PHÁT THÔNG BÁO HỆ THỐNG
+    # ─────────────────────────────────────────────────────────────────
+    def on_send_broadcast(self):
+        text = self.txt_broadcast_msg.get("1.0", tk.END).strip()
+        if not text:
+            messagebox.showwarning("Cảnh Báo", "Vui lòng nhập nội dung thông báo!")
+            return
+
+        target_selection = self.combo_broadcast_target.get()
+
+        if "Toàn bộ" in target_selection:
+            if self.hub:
+                self.run_coro(self.hub.admin_broadcast(text))
+            messagebox.showinfo("Thành Công", "Đã phát thông báo tới tất cả các phòng họp trên hệ thống!")
+        else:
+            # Phát tới phòng cụ thể
+            # Format: 'Phòng: code - title'
             try:
-                with open(filename, 'w', encoding='utf-8') as f:
+                room_code = target_selection.split(" - ")[0].replace("Phòng: ", "").strip()
+                if self.hub:
+                    self.run_coro(self.hub.admin_broadcast_to_room(room_code, text))
+                messagebox.showinfo("Thành Công", f"Đã gửi thông báo tới phòng [{room_code}]!")
+            except Exception as e:
+                messagebox.showerror("Lỗi", f"Không thể gửi thông báo: {e}")
+
+        self.txt_broadcast_msg.delete("1.0", tk.END)
+
+    # ─────────────────────────────────────────────────────────────────
+    # TIỆN ÍCH NHẬT KÝ & KHỞI CHẠY CLIENT
+    # ─────────────────────────────────────────────────────────────────
+    def clear_logs(self):
+        self.txt_logs.delete("1.0", tk.END)
+
+    def export_logs(self):
+        content = self.txt_logs.get("1.0", tk.END).strip()
+        if not content:
+            messagebox.showinfo("Thông Báo", "Chưa có nhật ký nào để xuất file.")
+            return
+
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".log",
+            filetypes=[("Text Log File", "*.log"), ("All Files", "*.*")],
+            title="Lưu Nhật Ký Hoạt Động Server"
+        )
+        if file_path:
+            try:
+                with open(file_path, "w", encoding="utf-8") as f:
                     f.write(content)
-                messagebox.showinfo("Thành công", f"Đã lưu nhật ký vào file:\n{filename}")
+                messagebox.showinfo("Thành Công", f"Đã lưu nhật ký vào:\n{file_path}")
             except Exception as e:
                 messagebox.showerror("Lỗi", f"Không thể lưu file: {e}")
 
-    def action_toggle_server(self):
-        """Bật hoặc Tắt Server dựa trên trạng thái hiện tại."""
-        if self.is_running:
-            # Xác nhận trước khi tắt
-            confirm = messagebox.askyesno(
-                "Xác nhận tắt Server",
-                "Bạn có chắc chắn muốn tắt Server?\nTất cả kết nối của Client sẽ bị ngắt!",
-                parent=self.root
-            )
-            if confirm:
-                self._stop_server()
-        else:
-            self._start_server()
-
-    def _start_server(self):
-        """Khởi động máy chủ TCP."""
-        host = self.entry_host.get().strip()
-        port_str = self.entry_port.get().strip()
-
-        if not host:
-            messagebox.showerror("Lỗi", "Địa chỉ IP Host không được để trống.", parent=self.root)
-            return
-
-        try:
-            port = int(port_str)
-            if port < 1024 or port > 65535:
-                raise ValueError()
-        except ValueError:
-            messagebox.showerror("Lỗi", "Port phải là một số nguyên từ 1024 đến 65535.", parent=self.root)
-            return
-
-        # Khởi tạo ChatServer
-        self.server = ChatServer(host=host, port=port)
-
-        # Đăng ký các hook callback
-        self.server.add_callback('on_status', lambda active, h, p: self.event_queue.put(('status', (active, h, p))))
-        self.server.add_callback('on_log', lambda ts, msg, tag: self.event_queue.put(('log', (ts, msg, tag))))
-        self.server.add_callback('on_client_connect', lambda data: self.event_queue.put(('client_connect', data)))
-        self.server.add_callback('on_client_join', lambda data: self.event_queue.put(('client_join', data)))
-        self.server.add_callback('on_client_update', lambda data: self.event_queue.put(('client_update', data)))
-        self.server.add_callback('on_client_leave', lambda data: self.event_queue.put(('client_leave', data)))
-        self.server.add_callback('on_message', lambda data: self.event_queue.put(('message', data)))
-
-        ok, msg = self.server.start_threaded()
-        if not ok:
-            messagebox.showerror("Lỗi Khởi Động", f"Không thể khởi động Server:\n{msg}", parent=self.root)
-            self.server = None
-
-    def _stop_server(self):
-        """Tắt máy chủ an toàn."""
-        if self.server:
-            self.server.shutdown()
-            self.server = None
-
-    def _handle_status_update(self, is_active, host, port):
-        """Cập nhật trạng thái hiển thị của Server trên UI."""
-        self.is_running = is_active
-
-        if is_active:
-            self.start_time = time.time()
-            self.lbl_server_status_badge.config(
-                text=f"● ĐANG LẮNG NGHE ({host}:{port})",
-                bg=self.COLOR_SUCCESS
-            )
-            self.btn_toggle_server.config(
-                text="⏹ Dừng Server",
-                style="Danger.TButton"
-            )
-            self.entry_host.config(state="disabled")
-            self.entry_port.config(state="disabled")
-            self.lbl_status_msg.config(text=f"🟢 Server đang chạy trên {host}:{port} - Sẵn sàng nhận Client.")
-        else:
-            self.start_time = None
-            self.lbl_server_status_badge.config(
-                text="● ĐÃ DỪNG (STOPPED)",
-                bg=self.COLOR_DANGER
-            )
-            self.btn_toggle_server.config(
-                text="▶ Khởi Động Server",
-                style="Success.TButton"
-            )
-            self.entry_host.config(state="normal")
-            self.entry_port.config(state="normal")
-            self.lbl_status_msg.config(text="🔴 Server đã dừng. Nhấn 'Khởi Động Server' để bắt đầu.")
-
-        self._refresh_kpis()
-        self._update_selected_action_bar()
-
-    def action_kick_selected(self):
-        """Ngắt kết nối Client đang được chọn."""
-        if not self.selected_client_id or not self.server:
-            return
-
-        client = self.client_records.get(self.selected_client_id)
-        if not client:
-            return
-
-        cid = client['id']
-        uname = client['username']
-
-        confirm = messagebox.askyesno(
-            "Xác nhận Kick",
-            f"Bạn có chắc muốn ngắt kết nối Client ID #{cid} ('{uname}')?",
-            parent=self.root
-        )
-        if confirm:
-            ok, msg = self.server.kick_client(cid, reason="Quản trị viên đã ngắt kết nối bạn.")
-            if ok:
-                self.lbl_status_msg.config(text=f"✅ Đã ngắt kết nối Client ID #{cid} ('{uname}').")
-            else:
-                messagebox.showwarning("Thông báo", msg, parent=self.root)
-
-    def action_pm_selected(self):
-        """Mở cửa sổ gửi tin nhắn riêng từ Quản trị viên tới Client được chọn."""
-        if not self.selected_client_id or not self.server:
-            return
-
-        client = self.client_records.get(self.selected_client_id)
-        if not client:
-            return
-
-        cid = client['id']
-        uname = client['username']
-
-        # Hộp thoại nhập nội dung tin nhắn riêng
-        dialog = tk.Toplevel(self.root)
-        dialog.title(f"Gửi Tin Nhắn Riêng Tới Client #{cid}")
-        dialog.geometry("450x220")
-        dialog.resizable(False, False)
-        dialog.transient(self.root)
-        dialog.grab_set()
-
-        lbl_info = tk.Label(
-            dialog,
-            text=f"Gửi tin nhắn riêng tới Client ID #{cid} ('{uname}'):",
-            font=("Segoe UI", 10, "bold"),
-            fg=self.COLOR_PRIMARY,
-            padx=14,
-            pady=10
-        )
-        lbl_info.pack(anchor=tk.W)
-
-        entry_msg = ttk.Entry(dialog, width=45, style="Custom.TEntry")
-        entry_msg.pack(fill=tk.X, padx=14, pady=5)
-        entry_msg.focus_set()
-
-        def do_send():
-            text = entry_msg.get().strip()
-            if not text:
-                return
-            ok, res = self.server.send_private_admin(cid, text)
-            if ok:
-                dialog.destroy()
-            else:
-                messagebox.showerror("Lỗi", res, parent=dialog)
-
-        entry_msg.bind("<Return>", lambda e: do_send())
-
-        btn_box = tk.Frame(dialog, padx=14, pady=10)
-        btn_box.pack(fill=tk.X, side=tk.BOTTOM)
-
-        ttk.Button(btn_box, text="Gửi Tin", style="Primary.TButton", command=do_send).pack(side=tk.RIGHT, padx=4)
-        ttk.Button(btn_box, text="Hủy", style="Secondary.TButton", command=dialog.destroy).pack(side=tk.RIGHT)
-
-    def action_copy_client_info(self):
-        """Sao chép thông tin Client được chọn vào bộ nhớ tạm (Clipboard)."""
-        if not self.selected_client_id or self.selected_client_id not in self.client_records:
-            return
-
-        c = self.client_records[self.selected_client_id]
-        info_text = (
-            f"Client ID: #{c['id']}\n"
-            f"Username: {c['username']}\n"
-            f"IP & Port: {c['address']}\n"
-            f"Socket FD: {c['fileno']}\n"
-            f"Connected At: {c['connected_at']}\n"
-            f"Status: {c['status']}\n"
-            f"Messages: {c['msg_count']}"
-        )
-        self.root.clipboard_clear()
-        self.root.clipboard_append(info_text)
-        self.lbl_status_msg.config(text=f"📋 Đã sao chép thông tin Client ID #{c['id']} vào Clipboard.")
-
-    def action_broadcast(self):
-        """Gửi thông báo hệ thống tới tất cả Client đang online."""
-        if not self.is_running or not self.server:
-            messagebox.showwarning("Thông báo", "Server hiện chưa hoạt động. Hãy khởi động Server trước.", parent=self.root)
-            return
-
-        text = self.entry_broadcast.get().strip()
-        if not text:
-            return
-
-        ok, msg = self.server.broadcast_announcement(text)
-        if ok:
-            self.entry_broadcast.delete(0, tk.END)
-            self.lbl_status_msg.config(text="📢 Đã phát thông báo thành công tới tất cả Client.")
-        else:
-            messagebox.showerror("Lỗi", msg, parent=self.root)
+    def open_desktop_app(self):
+        """Mở nhanh cửa sổ ứng dụng Desktop Meet Client."""
+        run_app_py = os.path.join(BASE_DIR, "run_app.py")
+        subprocess.Popen([sys.executable, run_app_py])
 
     def on_closing(self):
-        """Xử lý đóng ứng dụng an toàn khi người dùng nhấn nút X."""
+        """Xử lý khi người dùng nhấn nút X đóng cửa sổ."""
         if self.is_running:
-            confirm = messagebox.askyesno(
-                "Đóng ứng dụng",
-                "Server vẫn đang chạy. Bạn có chắc chắn muốn tắt Server và thoát không?",
-                parent=self.root
-            )
-            if not confirm:
-                return
+            if messagebox.askokcancel("Thoát", "Máy chủ đang chạy. Bạn có chắc muốn dừng máy chủ và đóng giao diện?"):
+                self.stop_server()
+                self.root.destroy()
+        else:
+            self.root.destroy()
 
-        self._stop_server()
-        self.root.destroy()
+
+def main():
+    app = ServerGUI()
+    app.run()
+
+
+if __name__ == '__main__':
+    main()

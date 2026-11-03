@@ -74,7 +74,7 @@ class AuthManager {
       }
       return data;
     } catch (e) {
-      return { success: False, message: "Lỗi kết nối máy chủ!" };
+      return { success: false, message: "Lỗi kết nối máy chủ!" };
     }
   }
 

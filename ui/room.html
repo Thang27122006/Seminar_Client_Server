@@ -35,11 +35,22 @@
         <span style="font-size: 1.25rem; font-weight: 500; color: #fff; letter-spacing: -0.3px;">NetSphere <span style="color: #8ab4f8; font-weight: 400;">Meet</span></span>
       </a>
 
-      <div style="display: flex; align-items: center; gap: 16px;">
+      <div style="display: flex; align-items: center; gap: 12px;">
         <div id="grLiveClock" style="font-size: 0.95rem; color: #bdc1c6; font-weight: 500;">--:--</div>
-        <div id="grAccountChip" style="display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.08); padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; color: #e8eaed;">
+
+        <!-- Khối Nút Đăng Nhập / Đăng Ký cho Khách -->
+        <div id="grAuthButtons" style="display: flex; align-items: center; gap: 8px;">
+          <button id="btnGrOpenLogin" class="btn-gr-auth btn-gr-auth-login" title="Đăng nhập tài khoản">Đăng nhập</button>
+          <button id="btnGrOpenRegister" class="btn-gr-auth btn-gr-auth-register" title="Đăng ký tài khoản mới">Đăng ký</button>
+        </div>
+
+        <!-- Khối Hồ Sơ Tài Khoản (Account Chip) -->
+        <div id="grAccountChip" style="display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.08); padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; color: #e8eaed; cursor: pointer; transition: all 0.2s;" title="Nhấn để đổi tài khoản hoặc đăng xuất">
           <span class="gr-chip-avatar" id="grChipAvatar" style="width: 24px; height: 24px; border-radius: 50%; background: #1a73e8; display: inline-flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 600;">G</span>
           <span id="grChipName">Khách</span>
+          <button id="btnGrLogout" class="hidden" title="Đăng xuất tài khoản" style="background:transparent; border:none; color:#9aa0a6; cursor:pointer; padding:2px; display:inline-flex; align-items:center;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+          </button>
         </div>
       </div>
     </header>
@@ -106,6 +117,15 @@
         <div id="grUserSection">
           <label style="display: block; font-size: 0.85rem; color: #9aa0a6; margin-bottom: 6px;">Tên của bạn khi tham gia:</label>
           <input type="text" id="grInputUsername" class="gr-input-name" placeholder="Nhập họ và tên hoặc biệt danh..." maxlength="30">
+          
+          <!-- Hộp thông tin tài khoản nhanh -->
+          <div id="grAuthStatusNotice" style="margin-top: 8px; font-size: 0.8rem; color: #bdc1c6; background: rgba(255,255,255,0.04); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08);">
+            <span id="grAuthStatusText">💡 Bạn đang ở chế độ <strong>Khách</strong>.</span>
+            <span id="grAuthActionLinks">
+              <a href="#" id="linkGrLogin" style="color: #8ab4f8; text-decoration: none; margin-left: 6px; font-weight: 500;">Đăng nhập</a> hoặc 
+              <a href="#" id="linkGrRegister" style="color: #8ab4f8; text-decoration: none; font-weight: 500;">Đăng ký</a>
+            </span>
+          </div>
         </div>
 
         <div class="gr-actions-row">
@@ -121,7 +141,15 @@
         </div>
 
         <div style="font-size: 0.78rem; color: #80868b; line-height: 1.4; margin-top: 8px;">
-          🔒 Được mã hóa và đồng bộ đa giao thức giữa Web và Máy tính (TCP Port 9000).
+          🔒 Được mã hóa và đồng bộ kết nối đa giao thức Client - Server (TCP Port 9000).
+        </div>
+
+        <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: space-between;">
+          <a href="/" style="color: #8ab4f8; text-decoration: none; font-size: 0.85rem; display: flex; align-items: center; gap: 6px; font-weight: 500;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+            <span>Về trang chủ tạo cuộc họp</span>
+          </a>
+          <a href="/" style="color: #9aa0a6; text-decoration: none; font-size: 0.85rem;">Mở phòng khác</a>
         </div>
       </div>
     </div>
@@ -454,9 +482,73 @@
     </div>
   </div>
 
+  <!-- =================================================================== -->
+  <!-- MODAL ĐĂNG NHẬP / ĐĂNG KÝ (GOOGLE MEET AUTH DIALOG)                 -->
+  <!-- =================================================================== -->
+  <div class="gm-modal-overlay hidden" id="modalAuth">
+    <div class="gm-modal-card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8ab4f8" stroke-width="2">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+          <h3 style="margin:0; font-size:1.2rem; font-weight:500; color:#fff;">Tài Khoản Meet Desktop</h3>
+        </div>
+        <button class="btn-icon-close-modal" id="btnCloseAuth">&times;</button>
+      </div>
+
+      <!-- Tab Chuyển Đổi Đăng Nhập / Đăng Ký -->
+      <div class="auth-tabs-row">
+        <button class="auth-tab-btn active" id="tabLogin">Đăng Nhập</button>
+        <button class="auth-tab-btn" id="tabRegister">Đăng Ký Tài Khoản</button>
+      </div>
+
+      <!-- Form Đăng Nhập -->
+      <form id="formLogin" class="auth-form-box">
+        <div id="loginAlert" class="auth-alert-box hidden"></div>
+        <div class="auth-form-group">
+          <label>Tên đăng nhập (Username) hoặc Email:</label>
+          <input type="text" id="loginUsername" class="auth-input-field" placeholder="Ví dụ: admin hoặc sinhvien1" required>
+        </div>
+        <div class="auth-form-group">
+          <label>Mật khẩu:</label>
+          <input type="password" id="loginPassword" class="auth-input-field" placeholder="••••••••" required>
+        </div>
+        <button type="submit" class="btn-auth-submit" id="btnSubmitLogin">Đăng Nhập Ngay</button>
+      </form>
+
+      <!-- Form Đăng Ký -->
+      <form id="formRegister" class="auth-form-box hidden">
+        <div id="registerAlert" class="auth-alert-box hidden"></div>
+        <div class="auth-form-group">
+          <label>Họ và tên hiển thị trong cuộc họp:</label>
+          <input type="text" id="regFullname" class="auth-input-field" placeholder="Ví dụ: Trần Minh Thắng" required>
+        </div>
+        <div class="auth-form-group">
+          <label>Tên tài khoản đăng nhập (Username):</label>
+          <input type="text" id="regUsername" class="auth-input-field" placeholder="Chữ thường không dấu (ví dụ: minhthang)" required>
+        </div>
+        <div class="auth-form-group">
+          <label>Email liên hệ (tùy chọn):</label>
+          <input type="email" id="regEmail" class="auth-input-field" placeholder="thang@student.edu.vn">
+        </div>
+        <div class="auth-form-group">
+          <label>Mật khẩu:</label>
+          <input type="password" id="regPassword" class="auth-input-field" placeholder="Tối thiểu 4 ký tự" required>
+        </div>
+        <div class="auth-form-group">
+          <label>Xác nhận lại mật khẩu:</label>
+          <input type="password" id="regConfirmPassword" class="auth-input-field" placeholder="Nhập lại mật khẩu" required>
+        </div>
+        <button type="submit" class="btn-auth-submit" id="btnSubmitRegister">Đăng Ký &amp; Đăng Nhập</button>
+      </form>
+    </div>
+  </div>
+
   <!-- Scripts -->
-  <script src="/js/auth.js?v=5.0"></script>
-  <script src="/js/sound_fx.js?v=5.0"></script>
-  <script src="/js/meet_room.js?v=5.0"></script>
+  <script src="/js/auth.js?v=5.2"></script>
+  <script src="/js/sound_fx.js?v=5.2"></script>
+  <script src="/js/meet_room.js?v=5.2"></script>
 </body>
 </html>

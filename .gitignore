@@ -4,3 +4,4 @@ __pycache__/
 .pytest_cache/
 *.db
 data/*.db
+data/desktop_profile/

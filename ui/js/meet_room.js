@@ -64,12 +64,41 @@
     grIconCamOn: document.getElementById('grIconCamOn'),
     grIconCamOff: document.getElementById('grIconCamOff'),
     grLiveClock: document.getElementById('grLiveClock'),
+    grAccountChip: document.getElementById('grAccountChip'),
     grChipAvatar: document.getElementById('grChipAvatar'),
     grChipName: document.getElementById('grChipName'),
+    btnGrLogout: document.getElementById('btnGrLogout'),
+    grAuthButtons: document.getElementById('grAuthButtons'),
+    btnGrOpenLogin: document.getElementById('btnGrOpenLogin'),
+    btnGrOpenRegister: document.getElementById('btnGrOpenRegister'),
+    grAuthStatusNotice: document.getElementById('grAuthStatusNotice'),
+    grAuthStatusText: document.getElementById('grAuthStatusText'),
+    grAuthActionLinks: document.getElementById('grAuthActionLinks'),
+    linkGrLogin: document.getElementById('linkGrLogin'),
+    linkGrRegister: document.getElementById('linkGrRegister'),
     grRoomSummaryText: document.getElementById('grRoomSummaryText'),
     grInputUsername: document.getElementById('grInputUsername'),
     btnGrJoinNow: document.getElementById('btnGrJoinNow'),
     btnGrPresent: document.getElementById('btnGrPresent'),
+
+    // Modal Auth (Đăng nhập / Đăng ký)
+    modalAuth: document.getElementById('modalAuth'),
+    btnCloseAuth: document.getElementById('btnCloseAuth'),
+    tabLogin: document.getElementById('tabLogin'),
+    tabRegister: document.getElementById('tabRegister'),
+    formLogin: document.getElementById('formLogin'),
+    formRegister: document.getElementById('formRegister'),
+    loginUsername: document.getElementById('loginUsername'),
+    loginPassword: document.getElementById('loginPassword'),
+    loginAlert: document.getElementById('loginAlert'),
+    btnSubmitLogin: document.getElementById('btnSubmitLogin'),
+    regFullname: document.getElementById('regFullname'),
+    regUsername: document.getElementById('regUsername'),
+    regEmail: document.getElementById('regEmail'),
+    regPassword: document.getElementById('regPassword'),
+    regConfirmPassword: document.getElementById('regConfirmPassword'),
+    registerAlert: document.getElementById('registerAlert'),
+    btnSubmitRegister: document.getElementById('btnSubmitRegister'),
 
     // Main Stage
     meetMainStage: document.getElementById('meetMainStage'),
@@ -847,7 +876,7 @@
   // ─────────────────────────────────────────────────────────────────
   function connectWebSocket(username) {
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const token = (window.Auth && window.Auth.getToken()) || '';
+    const token = (window.authManager && window.authManager.getToken()) || '';
     const wsUrl = `${protocol}//${location.host}/ws?room=${encodeURIComponent(state.roomCode)}&token=${encodeURIComponent(token)}`;
 
     state.ws = new WebSocket(wsUrl);
@@ -1725,22 +1754,31 @@
   // ─────────────────────────────────────────────────────────────────
   async function joinMeeting(withScreen = false) {
     let name = '';
-    if (state.currentUser && state.currentUser.fullname) {
-      name = state.currentUser.fullname;
+    let username = '';
+
+    if (state.currentUser && state.currentUser.username) {
+      username = state.currentUser.username;
+      name = DOM.grInputUsername?.value?.trim() || state.currentUser.fullname || username;
     } else if (DOM.grInputUsername && DOM.grInputUsername.value.trim()) {
       name = DOM.grInputUsername.value.trim();
+      username = name.toLowerCase().replace(/\s+/g, '_');
     } else {
       name = `Khách_${Math.floor(1000 + Math.random() * 9000)}`;
+      username = name;
     }
 
     if (!state.currentUser) {
       state.currentUser = {
-        username: name,
+        username: username,
         fullname: name,
-        avatar_color: '#1a73e8'
+        avatar_color: state.avatarColor || '#1a73e8'
       };
+    } else {
+      state.currentUser.fullname = name;
     }
 
+    state.username = username;
+    state.fullname = name;
     state.isJoined = true;
 
     // Switch UI from Green Room to Main Stage
@@ -1799,11 +1837,41 @@
       DOM.grInputUsername.addEventListener('input', () => {
         const val = DOM.grInputUsername.value.trim();
         const initial = getInitials(val || 'Khách');
-        if (DOM.grChipAvatar) DOM.grChipAvatar.textContent = initial;
-        if (DOM.grAvatarCircle) DOM.grAvatarCircle.textContent = initial;
-        if (DOM.grChipName) DOM.grChipName.textContent = val || 'Khách';
+        if (!state.currentUser) {
+          if (DOM.grChipAvatar) DOM.grChipAvatar.textContent = initial;
+          if (DOM.grAvatarCircle) DOM.grAvatarCircle.textContent = initial;
+          if (DOM.grChipName) DOM.grChipName.textContent = val || 'Khách';
+        }
       });
     }
+
+    // Auth Listeners (Đăng nhập / Đăng ký / Đăng xuất)
+    if (DOM.btnGrOpenLogin) DOM.btnGrOpenLogin.addEventListener('click', () => openAuthModal('login'));
+    if (DOM.btnGrOpenRegister) DOM.btnGrOpenRegister.addEventListener('click', () => openAuthModal('register'));
+    if (DOM.grAccountChip) {
+      DOM.grAccountChip.addEventListener('click', (e) => {
+        if (e.target === DOM.btnGrLogout || DOM.btnGrLogout?.contains(e.target)) return;
+        if (!window.authManager?.getUser()) {
+          openAuthModal('login');
+        }
+      });
+    }
+    if (DOM.btnGrLogout) {
+      DOM.btnGrLogout.addEventListener('click', (e) => {
+        e.stopPropagation();
+        handleLogout();
+      });
+    }
+    if (DOM.btnCloseAuth) DOM.btnCloseAuth.addEventListener('click', closeAuthModal);
+    if (DOM.modalAuth) {
+      DOM.modalAuth.addEventListener('click', (e) => {
+        if (e.target === DOM.modalAuth) closeAuthModal();
+      });
+    }
+    if (DOM.tabLogin) DOM.tabLogin.addEventListener('click', () => openAuthModal('login'));
+    if (DOM.tabRegister) DOM.tabRegister.addEventListener('click', () => openAuthModal('register'));
+    if (DOM.formLogin) DOM.formLogin.addEventListener('submit', handleLoginSubmit);
+    if (DOM.formRegister) DOM.formRegister.addEventListener('submit', handleRegisterSubmit);
 
     // Bottom Bar Controls
     if (DOM.btnMeetMic) DOM.btnMeetMic.addEventListener('click', toggleMic);
@@ -2006,6 +2074,204 @@
   }
 
   // ─────────────────────────────────────────────────────────────────
+  // AUTHENTICATION LOGIC (LOGIN / REGISTER / LOGOUT)
+  // ─────────────────────────────────────────────────────────────────
+  function renderAuthState() {
+    const user = window.authManager?.getUser();
+    if (user) {
+      state.currentUser = user;
+      state.avatarColor = user.avatar_color || '#1a73e8';
+      state.isHost = user.role === 'host' || user.role === 'admin' || user.username === 'admin';
+
+      const initial = getInitials(user.fullname || user.username);
+      const color = user.avatar_color || '#1a73e8';
+
+      if (DOM.grChipName) DOM.grChipName.textContent = user.fullname || user.username;
+      if (DOM.grChipAvatar) {
+        DOM.grChipAvatar.textContent = initial;
+        DOM.grChipAvatar.style.backgroundColor = color;
+      }
+      if (DOM.grAvatarCircle) {
+        DOM.grAvatarCircle.textContent = initial;
+        DOM.grAvatarCircle.style.backgroundColor = color;
+      }
+      if (DOM.grInputUsername) {
+        DOM.grInputUsername.value = user.fullname || user.username;
+      }
+
+      if (DOM.grAuthButtons) DOM.grAuthButtons.classList.add('hidden');
+      if (DOM.btnGrLogout) DOM.btnGrLogout.classList.remove('hidden');
+
+      if (DOM.grAuthStatusText) {
+        DOM.grAuthStatusText.innerHTML = `🟢 Đã đăng nhập: <strong>${escapeHtml(user.fullname || user.username)}</strong> (@${escapeHtml(user.username)})`;
+      }
+      if (DOM.grAuthActionLinks) {
+        DOM.grAuthActionLinks.innerHTML = `<a href="#" id="linkGrLogoutAction" style="color:#f28b82; text-decoration:none; margin-left:8px; font-weight:500;">Đăng xuất</a>`;
+        document.getElementById('linkGrLogoutAction')?.addEventListener('click', (e) => {
+          e.preventDefault();
+          handleLogout();
+        });
+      }
+    } else {
+      state.currentUser = null;
+      if (DOM.grChipName) DOM.grChipName.textContent = 'Khách';
+      if (DOM.grChipAvatar) {
+        DOM.grChipAvatar.textContent = 'G';
+        DOM.grChipAvatar.style.backgroundColor = '#1a73e8';
+      }
+      if (DOM.grAvatarCircle) {
+        DOM.grAvatarCircle.textContent = 'K';
+        DOM.grAvatarCircle.style.backgroundColor = '#1a73e8';
+      }
+
+      if (DOM.grAuthButtons) DOM.grAuthButtons.classList.remove('hidden');
+      if (DOM.btnGrLogout) DOM.btnGrLogout.classList.add('hidden');
+
+      if (DOM.grAuthStatusText) {
+        DOM.grAuthStatusText.innerHTML = `💡 Bạn đang ở chế độ <strong>Khách</strong>.`;
+      }
+      if (DOM.grAuthActionLinks) {
+        DOM.grAuthActionLinks.innerHTML = `
+          <a href="#" id="linkGrLogin" style="color:#8ab4f8; text-decoration:none; margin-left:6px; font-weight:500;">Đăng nhập</a> hoặc 
+          <a href="#" id="linkGrRegister" style="color:#8ab4f8; text-decoration:none; font-weight:500;">Đăng ký</a>
+        `;
+        document.getElementById('linkGrLogin')?.addEventListener('click', (e) => {
+          e.preventDefault();
+          openAuthModal('login');
+        });
+        document.getElementById('linkGrRegister')?.addEventListener('click', (e) => {
+          e.preventDefault();
+          openAuthModal('register');
+        });
+      }
+    }
+  }
+
+  function openAuthModal(tab = 'login') {
+    const modal = document.getElementById('modalAuth') || DOM.modalAuth;
+    if (!modal) return;
+    modal.classList.remove('hidden');
+
+    const loginAlert = document.getElementById('loginAlert') || DOM.loginAlert;
+    const registerAlert = document.getElementById('registerAlert') || DOM.registerAlert;
+    if (loginAlert) loginAlert.classList.add('hidden');
+    if (registerAlert) registerAlert.classList.add('hidden');
+
+    const tabLogin = document.getElementById('tabLogin') || DOM.tabLogin;
+    const tabRegister = document.getElementById('tabRegister') || DOM.tabRegister;
+    const formLogin = document.getElementById('formLogin') || DOM.formLogin;
+    const formRegister = document.getElementById('formRegister') || DOM.formRegister;
+
+    if (tab === 'login') {
+      tabLogin?.classList.add('active');
+      tabRegister?.classList.remove('active');
+      formLogin?.classList.remove('hidden');
+      formRegister?.classList.add('hidden');
+      setTimeout(() => document.getElementById('loginUsername')?.focus(), 50);
+    } else {
+      tabLogin?.classList.remove('active');
+      tabRegister?.classList.add('active');
+      formLogin?.classList.add('hidden');
+      formRegister?.classList.remove('hidden');
+      setTimeout(() => document.getElementById('regFullname')?.focus(), 50);
+    }
+  }
+
+  function closeAuthModal() {
+    const modal = document.getElementById('modalAuth') || DOM.modalAuth;
+    if (modal) modal.classList.add('hidden');
+  }
+
+  async function handleLoginSubmit(e) {
+    e.preventDefault();
+    const username = DOM.loginUsername?.value?.trim();
+    const password = DOM.loginPassword?.value;
+
+    if (!username || !password) return;
+
+    if (DOM.loginAlert) DOM.loginAlert.classList.add('hidden');
+    if (DOM.btnSubmitLogin) {
+      DOM.btnSubmitLogin.disabled = true;
+      DOM.btnSubmitLogin.textContent = 'Đang đăng nhập...';
+    }
+
+    const res = await window.authManager.login(username, password);
+
+    if (DOM.btnSubmitLogin) {
+      DOM.btnSubmitLogin.disabled = false;
+      DOM.btnSubmitLogin.textContent = 'Đăng Nhập Ngay';
+    }
+
+    if (res.success && res.user) {
+      closeAuthModal();
+      renderAuthState();
+      showToast(`👋 Chào mừng bạn, ${res.user.fullname || res.user.username}!`);
+    } else {
+      if (DOM.loginAlert) {
+        DOM.loginAlert.textContent = res.message || 'Tên đăng nhập hoặc mật khẩu không đúng!';
+        DOM.loginAlert.classList.remove('hidden');
+      }
+    }
+  }
+
+  async function handleRegisterSubmit(e) {
+    e.preventDefault();
+    const fullname = DOM.regFullname?.value?.trim();
+    const username = DOM.regUsername?.value?.trim();
+    const email = DOM.regEmail?.value?.trim() || '';
+    const password = DOM.regPassword?.value;
+    const confirmPassword = DOM.regConfirmPassword?.value;
+
+    if (!fullname || !username || !password) return;
+
+    if (password !== confirmPassword) {
+      if (DOM.registerAlert) {
+        DOM.registerAlert.textContent = 'Mật khẩu xác nhận không khớp!';
+        DOM.registerAlert.classList.remove('hidden');
+      }
+      return;
+    }
+
+    if (password.length < 4) {
+      if (DOM.registerAlert) {
+        DOM.registerAlert.textContent = 'Mật khẩu phải có ít nhất 4 ký tự!';
+        DOM.registerAlert.classList.remove('hidden');
+      }
+      return;
+    }
+
+    if (DOM.registerAlert) DOM.registerAlert.classList.add('hidden');
+    if (DOM.btnSubmitRegister) {
+      DOM.btnSubmitRegister.disabled = true;
+      DOM.btnSubmitRegister.textContent = 'Đang đăng ký...';
+    }
+
+    const res = await window.authManager.register(username, password, fullname, email);
+
+    if (DOM.btnSubmitRegister) {
+      DOM.btnSubmitRegister.disabled = false;
+      DOM.btnSubmitRegister.textContent = 'Đăng Ký & Đăng Nhập';
+    }
+
+    if (res.success && res.user) {
+      closeAuthModal();
+      renderAuthState();
+      showToast(`🎉 Đăng ký thành công! Chào mừng ${res.user.fullname}`);
+    } else {
+      if (DOM.registerAlert) {
+        DOM.registerAlert.textContent = res.message || 'Đăng ký không thành công!';
+        DOM.registerAlert.classList.remove('hidden');
+      }
+    }
+  }
+
+  async function handleLogout() {
+    await window.authManager.logout();
+    renderAuthState();
+    showToast('Đã đăng xuất tài khoản.');
+  }
+
+  // ─────────────────────────────────────────────────────────────────
   // INIT ON PAGE LOAD
   // ─────────────────────────────────────────────────────────────────
   async function init() {
@@ -2013,24 +2279,13 @@
     updateClock();
     setInterval(updateClock, 1000);
 
-    // Check authenticated user
-    if (window.Auth) {
-      const user = window.Auth.getUser();
-      if (user) {
-        state.currentUser = user;
-        const initial = getInitials(user.fullname || user.username);
-        const color = user.avatar_color || '#1a73e8';
-        if (DOM.grChipName) DOM.grChipName.textContent = user.fullname || user.username;
-        if (DOM.grChipAvatar) {
-          DOM.grChipAvatar.textContent = initial;
-          DOM.grChipAvatar.style.backgroundColor = color;
-        }
-        if (DOM.grAvatarCircle) {
-          DOM.grAvatarCircle.textContent = initial;
-          DOM.grAvatarCircle.style.backgroundColor = color;
-        }
-        if (DOM.grInputUsername) DOM.grInputUsername.value = user.fullname || user.username;
-      }
+    // Gắn sự kiện giao diện (nút bấm, modal, tabs) ngay lập tức
+    bindEvents();
+
+    // Kiểm tra và khởi tạo trạng thái xác thực người dùng
+    if (window.authManager) {
+      await window.authManager.checkAuth();
+      renderAuthState();
     }
 
     // Query room info
@@ -2052,9 +2307,12 @@
       if (DOM.grRoomSummaryText) DOM.grRoomSummaryText.textContent = 'Sẵn sàng tham gia';
     }
 
-    bindEvents();
     initLocalMedia();
   }
 
-  window.addEventListener('DOMContentLoaded', init);
+  if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
 })();

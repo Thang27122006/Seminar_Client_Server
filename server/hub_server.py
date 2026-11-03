@@ -1,9 +1,9 @@
 """
-Web Server & Dual-Protocol Bridge cho Seminar Lập Trình Mạng (Client - Server).
+Desktop Hub Server & Dual-Protocol Bridge cho Seminar Lập Trình Mạng (Client - Server).
 Đồng thời hỗ trợ:
-1. Giao diện Web Client & Admin Dashboard qua HTTP & WebSocket (Port 8080).
+1. Giao diện Desktop App & Admin Dashboard qua HTTP & WebSocket nội bộ (Port 8080).
 2. Socket TCP truyền thống (Port 9000) tương thích 100% với run_gui.py & run_client.py.
-3. Đồng bộ tin nhắn tập trung giữa cả 2 nền tảng Web & Desktop TCP.
+3. Đồng bộ tin nhắn tập trung giữa các Desktop Client theo thời gian thực.
 """
 
 import os
@@ -108,6 +108,10 @@ class DualChatHub:
         self.allow_public_chat = True
         self.allow_private_chat = True
 
+        # Callbacks cho Server GUI Controller
+        self.on_log = None
+        self.on_state_change = None
+
     def log(self, message, tag='INFO'):
         timestamp = datetime.now().strftime("%H:%M:%S")
         log_entry = {
@@ -119,6 +123,13 @@ class DualChatHub:
         self.logs.append(log_entry)
         if len(self.logs) > self.max_logs:
             self.logs.pop(0)
+
+        # Gửi log cho GUI nếu có hook
+        if self.on_log and callable(self.on_log):
+            try:
+                self.on_log(log_entry)
+            except Exception:
+                pass
 
         # Gửi log ngay cho các Admin WebSockets đang mở
         asyncio.create_task(self._notify_admins('LOG', log_entry))
@@ -143,6 +154,12 @@ class DualChatHub:
                 closed.add(ws)
 
         self.admin_websockets.difference_update(closed)
+
+        if self.on_state_change and callable(self.on_state_change):
+            try:
+                self.on_state_change(event_type, data)
+            except Exception:
+                pass
 
     def get_stats(self):
         uptime_seconds = int((datetime.now() - self.start_time).total_seconds())
@@ -333,7 +350,7 @@ class DualChatHub:
         })
 
         # Báo cho các Client khác trong phòng
-        platform_icon = "🌐 Web" if session.client_type == 'websocket' else "💻 Desktop TCP"
+        platform_icon = "💻 Desktop App" if session.client_type == 'websocket' else "🔌 TCP Client"
         join_notification = {
             "message": f"'{session.fullname or username}' (ID: #{session.id} - {platform_icon}) đã tham gia phòng họp.",
             "client_id": session.id,
@@ -713,6 +730,113 @@ class DualChatHub:
         await self.broadcast(MSG_SYSTEM, {"message": "🔇 [THÔNG BÁO TỪ HOST]: Tất cả người tham gia đã bị tắt quyền chat."})
         await self._notify_admins('CLIENTS_UPDATE', [c.to_dict() for c in self.clients.values()])
         return True, "Đã Mute Chat toàn bộ thành viên"
+
+    def get_all_rooms(self):
+        """Trả về danh sách toàn bộ các phòng họp hiện có trên hệ thống."""
+        return [r.to_dict() for r in self.room_manager.rooms.values()]
+
+    def get_room_clients(self, room_code):
+        """Trả về danh sách các Client đang có mặt trong một phòng họp."""
+        room = self.room_manager.get_room(room_code)
+        if not room:
+            return []
+        return [c.to_dict() for c in room.clients if c.is_active]
+
+    async def create_room_admin(self, title, host_username="admin", host_fullname="Ban Quản Trị", custom_code=None):
+        """Quản trị viên tạo một phòng họp mới."""
+        room = self.room_manager.create_room(
+            title=title,
+            host_username=host_username,
+            host_fullname=host_fullname,
+            custom_code=custom_code
+        )
+        self.log(f"🏠 [TẠO PHÒNG] Quản trị viên đã tạo phòng '{room.title}' (Mã: {room.code})", tag='ROOM')
+        await self._notify_admins('STATS_UPDATE', self.get_stats())
+        return room
+
+    async def admin_toggle_lock_room(self, room_code):
+        """Khóa hoặc mở khóa một phòng họp cụ thể."""
+        room = self.room_manager.get_room(room_code)
+        if not room:
+            return False, f"Không tìm thấy phòng '{room_code}'"
+
+        room.is_locked = not room.is_locked
+        state_text = "🔒 ĐÃ KHÓA PHÒNG" if room.is_locked else "🔓 ĐÃ MỞ KHÓA PHÒNG"
+        self.log(f"🛡️ [HOST CONTROL] Phòng [{room_code}] {state_text}", tag='SYSTEM')
+
+        msg = f"[BẢO MẬT CUỘC HỌP]: Quản trị viên đã {'KHÓA' if room.is_locked else 'MỞ KHÓA'} phòng họp này."
+        await self.broadcast(MSG_SYSTEM, {"message": msg}, room_code=room_code)
+        await self._notify_admins('STATS_UPDATE', self.get_stats())
+        return True, state_text
+
+    async def admin_mute_room(self, room_code):
+        """Tắt quyền chat/mic của toàn bộ thành viên trong phòng họp cụ thể."""
+        room = self.room_manager.get_room(room_code)
+        if not room:
+            return False, f"Không tìm thấy phòng '{room_code}'"
+
+        count = 0
+        for s in list(room.clients):
+            if not s.is_host:
+                s.is_muted = True
+                count += 1
+
+        self.log(f"🔇 [HOST CONTROL] Đã tắt tiếng {count} thành viên trong phòng [{room_code}]", tag='SYSTEM')
+        await self.broadcast(MSG_SYSTEM, {
+            "message": "🔇 [QUYỀN PHÒNG]: Quản trị viên đã TẮT TIẾNG (Mute All) toàn bộ thành viên trong phòng."
+        }, room_code=room_code)
+        await self._notify_admins('STATS_UPDATE', self.get_stats())
+        return True, f"Đã tắt tiếng {count} thành viên trong phòng {room_code}"
+
+    async def admin_broadcast_to_room(self, room_code, text):
+        """Quản trị viên gửi thông báo tới một phòng họp cụ thể."""
+        text = (text or '').strip()
+        if not text:
+            return False, "Nội dung không được để trống"
+
+        room = self.room_manager.get_room(room_code)
+        if not room:
+            return False, f"Không tìm thấy phòng '{room_code}'"
+
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        content = f"[THÔNG BÁO TỪ QUẢN TRỊ VIÊN]: {text}"
+
+        msg_payload = {
+            "message": content,
+            "is_admin_announcement": True,
+            "timestamp": timestamp,
+            "room": room_code
+        }
+
+        await self.broadcast(MSG_SYSTEM, msg_payload, room_code=room_code)
+        self.total_messages += 1
+        self.log(f"📢 [{room_code}] [THÔNG BÁO QUẢN TRỊ] {text}", tag='SYSTEM')
+        await self._notify_admins('MESSAGE', {
+            "type": MSG_SYSTEM,
+            **msg_payload
+        }, room_code=room_code)
+        return True, f"Đã gửi thông báo tới phòng {room_code}"
+
+    async def admin_disband_room(self, room_code, reason="Quản trị viên đã đóng phiên họp."):
+        """Đóng/giải tán một phòng họp."""
+        room = self.room_manager.get_room(room_code)
+        if not room:
+            return False, f"Không tìm thấy phòng '{room_code}'"
+
+        clients = list(room.clients)
+        for s in clients:
+            await self.send_to_session(s, MSG_SYSTEM, {
+                "message": f"Phòng họp [{room_code}] đã bị đóng bởi Quản trị viên: {reason}"
+            })
+            if room_code != 'seminar-network-lab':
+                await self.remove_client(s, reason=reason)
+
+        if room_code != 'seminar-network-lab':
+            self.room_manager.delete_room(room_code)
+
+        self.log(f"🗑️ [GIẢI TÁN PHÒNG] Đã đóng phiên họp [{room_code}]", tag='ROOM')
+        await self._notify_admins('STATS_UPDATE', self.get_stats())
+        return True, f"Đã đóng phòng {room_code}"
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -1127,8 +1251,7 @@ async def api_rooms_create_handler(request):
     return web.json_response({
         "success": True,
         "room": room.to_dict(),
-        "join_url": f"/room?code={room.code}",
-        "admin_url": f"/admin?room={room.code}"
+        "join_url": f"/room?code={room.code}"
     })
 
 
@@ -1140,12 +1263,14 @@ async def api_rooms_get_handler(request):
     return web.json_response({"success": True, "room": room.to_dict()})
 
 
-# HTML Page Handlers
+UI_DIR = os.path.join(BASE_DIR, 'ui')
+
+# Page Handlers
 async def home_handler(request):
-    """Phục vụ trang chủ Google Meet & Zoom Home Lobby."""
-    home_path = os.path.join(BASE_DIR, 'web', 'home.html')
+    """Phục vụ trang chủ Google Meet Desktop Home."""
+    home_path = os.path.join(UI_DIR, 'home.html')
     if not os.path.exists(home_path):
-        home_path = os.path.join(BASE_DIR, 'web', 'index.html')
+        home_path = os.path.join(UI_DIR, 'room.html')
     return web.FileResponse(
         home_path,
         headers={'Cache-Control': 'no-cache, no-store, must-revalidate'}
@@ -1154,24 +1279,11 @@ async def home_handler(request):
 
 async def room_handler(request):
     """Phục vụ phòng họp trực tuyến (Client Meeting Room)."""
-    room_path = os.path.join(BASE_DIR, 'web', 'room.html')
-    if not os.path.exists(room_path):
-        room_path = os.path.join(BASE_DIR, 'web', 'index.html')
+    room_path = os.path.join(UI_DIR, 'room.html')
     return web.FileResponse(
         room_path,
         headers={'Cache-Control': 'no-cache, no-store, must-revalidate'}
     )
-
-
-async def admin_page_handler(request):
-    """Phục vụ trang web Host Studio riêng biệt (Google Meet / Zoom Host Control Center)."""
-    admin_path = os.path.join(BASE_DIR, 'web', 'admin.html')
-    if os.path.exists(admin_path):
-        return web.FileResponse(
-            admin_path,
-            headers={'Cache-Control': 'no-cache, no-store, must-revalidate'}
-        )
-    return web.Response(text="Admin page not found. Please ensure 'web/admin.html' exists.", status=404)
 
 
 async def api_upload_handler(request):
@@ -1285,8 +1397,6 @@ def create_web_application(hub):
     app.router.add_get('/home.html', home_handler)
     app.router.add_get('/room', room_handler)
     app.router.add_get('/room.html', room_handler)
-    app.router.add_get('/admin', admin_page_handler)
-    app.router.add_get('/admin.html', admin_page_handler)
 
     # Phục vụ file đính kèm đã upload
     uploads_dir = os.path.join(BASE_DIR, 'data', 'uploads')
@@ -1294,20 +1404,20 @@ def create_web_application(hub):
     app.router.add_static('/uploads', path=uploads_dir, name='uploads', show_index=False)
 
     # Phục vụ tài nguyên tĩnh (css, js, assets)
-    web_dir = os.path.join(BASE_DIR, 'web')
-    if os.path.exists(web_dir):
-        app.router.add_static('/', path=web_dir, name='static', show_index=False)
+    if os.path.exists(UI_DIR):
+        app.router.add_static('/', path=UI_DIR, name='static', show_index=False)
 
     return app
 
 
-async def start_dual_server(host=HOST, web_port=WEB_PORT, tcp_port=TCP_PORT):
+async def start_dual_server(host=HOST, web_port=WEB_PORT, tcp_port=TCP_PORT, hub=None, stop_event=None, on_ready=None):
     """
-    Khởi động song song cả Máy chủ Web (HTTP+WS) và Máy chủ TCP Socket.
+    Khởi động song song cả Máy chủ Desktop Hub và Máy chủ TCP Socket.
     """
-    hub = DualChatHub()
+    if hub is None:
+        hub = DualChatHub()
 
-    # 1. Khởi động Web Server (aiohttp)
+    # 1. Khởi động Desktop Hub Server (aiohttp)
     app = create_web_application(hub)
     runner = web.AppRunner(app)
     await runner.setup()
@@ -1317,13 +1427,15 @@ async def start_dual_server(host=HOST, web_port=WEB_PORT, tcp_port=TCP_PORT):
     except OSError as e:
         await runner.cleanup()
         if e.errno in (98, 48, 10048):  # EADDRINUSE on Linux / macOS / Windows
-            print(f"\n❌ [LỖI KHỞI ĐỘNG] Cổng Web {web_port} đang bị chiếm dụng bởi một tiến trình khác!")
-            print(f"👉 Gợi ý: Hãy tắt tiến trình đang chạy cổng {web_port} (ví dụ: fuser -k {web_port}/tcp hoặc kill PID)")
+            err_msg = f"Cổng dịch vụ {web_port} đang bị chiếm dụng bởi một tiến trình khác!"
         else:
-            print(f"\n❌ [LỖI KHỞI ĐỘNG] Không thể lắng nghe cổng Web {web_port}: {e}")
+            err_msg = f"Không thể lắng nghe cổng dịch vụ {web_port}: {e}"
+        hub.log(f"❌ [LỖI KHỞI ĐỘNG] {err_msg}", tag='ERROR')
+        if on_ready:
+            on_ready(hub, False, err_msg)
         return
 
-    hub.log(f"🚀 [WEB SERVER] Khởi chạy thành công tại http://{host}:{web_port}", tag='SUCCESS')
+    hub.log(f"🚀 [DESKTOP HUB SERVER] Khởi chạy thành công tại {host}:{web_port}", tag='SUCCESS')
 
     # 2. Khởi động TCP Socket Server (asyncio)
     async def _tcp_cb(reader, writer):
@@ -1332,23 +1444,42 @@ async def start_dual_server(host=HOST, web_port=WEB_PORT, tcp_port=TCP_PORT):
     try:
         tcp_server = await asyncio.start_server(_tcp_cb, host, tcp_port)
     except OSError as e:
+        await site.stop()
         await runner.cleanup()
         if e.errno in (98, 48, 10048):
-            print(f"\n❌ [LỖI KHỞI ĐỘNG] Cổng TCP Socket {tcp_port} đang bị chiếm dụng bởi một tiến trình khác!")
-            print(f"👉 Gợi ý: Hãy tắt tiến trình đang chạy cổng {tcp_port} (ví dụ: fuser -k {tcp_port}/tcp)")
+            err_msg = f"Cổng TCP Socket {tcp_port} đang bị chiếm dụng bởi một tiến trình khác!"
         else:
-            print(f"\n❌ [LỖI KHỞI ĐỘNG] Không thể lắng nghe cổng TCP {tcp_port}: {e}")
+            err_msg = f"Không thể lắng nghe cổng TCP {tcp_port}: {e}"
+        hub.log(f"❌ [LỖI KHỞI ĐỘNG] {err_msg}", tag='ERROR')
+        if on_ready:
+            on_ready(hub, False, err_msg)
         return
 
     hub.log(f"🔌 [TCP SERVER] Đang lắng nghe Socket tại {host}:{tcp_port}", tag='SUCCESS')
-    hub.log(f"✨ Hỗ trợ đồng thời Web Client (Browser) & Desktop Client (Tkinter)", tag='SUCCESS')
+    hub.log(f"✨ Sẵn sàng phục vụ kết nối Desktop App và TCP Client", tag='SUCCESS')
 
-    # Giữ server chạy vĩnh viễn
+    if on_ready:
+        on_ready(hub, True, None)
+
+    # Giữ server chạy vĩnh viễn hoặc chờ tín hiệu stop_event
     try:
-        async with tcp_server:
-            await tcp_server.serve_forever()
+        if stop_event:
+            await stop_event.wait()
+        else:
+            async with tcp_server:
+                await tcp_server.serve_forever()
     finally:
-        await runner.cleanup()
+        try:
+            tcp_server.close()
+            await tcp_server.wait_closed()
+        except Exception:
+            pass
+        try:
+            await site.stop()
+            await runner.cleanup()
+        except Exception:
+            pass
+        hub.log("🛑 Máy chủ đã dừng an toàn.", tag='SYSTEM')
 
 
 def run_standalone():
